@@ -52,13 +52,13 @@ const CenterForm = ({ center = null, onSuccess }) => {
         centerAdminEmail: center.centerAdminEmail || "",
         phone: center.phone || "",
         proxy: {
-          provider: center.proxy?.provider || "smartproxy",
+          provider: center.proxy?.provider || "decodo",
           username: center.proxy?.username || "",
           password: center.proxy?.password || "",
           type: center.proxy?.type || "zip"
         },
         googleSheets: {
-          clientKeyFile: null, // Don't pre-fill file
+          clientKeyFile: null,
           masterSheetId: center.googleSheets?.masterSheetId || "",
           adminSheetId: center.googleSheets?.adminSheetId || "",
         },

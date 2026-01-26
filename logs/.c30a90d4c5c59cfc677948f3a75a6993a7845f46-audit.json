@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 3
+    },
+    "auditLog": "D:\\project\\Jornaya_Bot\\backend\\logs\\.c30a90d4c5c59cfc677948f3a75a6993a7845f46-audit.json",
+    "files": [
+        {
+            "date": 1769458990252,
+            "name": "D:\\project\\Jornaya_Bot\\backend\\logs\\error-2026-01-27.log",
+            "hash": "ee22a9f14c84023d4c161d63564c6b1ae23d9b33af15de31807de25aa2ffd4bb"
+        }
+    ],
+    "hashType": "sha256"
+}

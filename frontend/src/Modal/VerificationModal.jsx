@@ -9,17 +9,18 @@ const VerificationModal = ({ show, onClose }) => {
   const { loading } = useSelector((state) => state.verification);
   const [code, setCode] = useState("");
 
-  const handleVerify = async () => {
-    if (!code.trim()) return showToast("error", "Please enter a verification code");
+const handleVerify = async () => {
+  if (!code.trim()) return showToast("error", "Please enter a verification code");
 
-    try {
-      const result = await dispatch(verifyCode(code)).unwrap();
-      showToast("success", result.message || "Verification successful!");
-      onClose();
-    } catch (err) {
-      showToast("error", err.message || "Verification failed");
-    }
-  };
+  try {
+    const result = await dispatch(verifyCode(code)).unwrap();
+    showToast("success", result.message || "Verification successful!");
+    onClose();
+  } catch (err) {
+    showToast("error", err.message || "Verification failed");
+  }
+};
+
 
   return (
     <Modal

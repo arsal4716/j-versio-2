@@ -11,7 +11,6 @@ const CampaignCard = ({ title, url, colorClass, isEnabled, centerId }) => {
   }`;
 
   const handleOpenForm = () => {
-    // title = campaign name (ACA, MVA, etc.)
     navigate(`/form/${centerId}/${title}`);
   };
 

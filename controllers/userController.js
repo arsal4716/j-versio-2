@@ -25,10 +25,6 @@ exports.getAllUsers = async (req, res, next) => {
     if (centerId) {
       filter.centerId = centerId;
     }
-
-    // Only super_admin can see all users, so we don't filter by createdBy
-    // But note: If we want to let center admins see their own users, we need to adjust
-
     const users = await User.find(filter)
       .select('-password')
       .populate('centerId', 'name verificationCode')
@@ -78,7 +74,6 @@ exports.createUser = async (req, res, next) => {
   try {
     const { name, email, password, company, roles, centerId, allowedCampaigns } = req.body;
 
-    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return fail(res, {
@@ -87,7 +82,6 @@ exports.createUser = async (req, res, next) => {
       });
     }
 
-    // If centerId is provided, check if the center exists
     if (centerId) {
       const center = await Center.findById(centerId);
       if (!center) {
@@ -97,8 +91,6 @@ exports.createUser = async (req, res, next) => {
         });
       }
     }
-
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = new User({
@@ -132,14 +124,12 @@ exports.updateUser = async (req, res, next) => {
     const { id } = req.params;
     const updateData = { ...req.body };
 
-    // If password is being updated, hash it
     if (updateData.password) {
       updateData.password = await bcrypt.hash(updateData.password, 10);
     } else {
       delete updateData.password;
     }
 
-    // If centerId is provided, check if the center exists
     if (updateData.centerId) {
       const center = await Center.findById(updateData.centerId);
       if (!center) {

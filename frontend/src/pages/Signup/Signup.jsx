@@ -7,41 +7,40 @@ import { useSelector } from "react-redux";
 
 const Register = () => {
   const [showModal, setShowModal] = useState(false);
-
-  const { verified, centerId, verificationCode } = useSelector(
+  const { verified, centerId, verificationCode, loading } = useSelector(
     (state) => state.verification
   );
 
   useEffect(() => {
-    if (!verified) {
-      setShowModal(true);
-    }
+    if (!verified) setShowModal(true);
   }, [verified]);
 
-  const canRenderForm = verified && centerId && verificationCode;
+  const handleModalClose = () => {
+    setShowModal(false);
+  };
 
   return (
     <Layout>
       <AuthWrapper>
-        {verified && !centerId ? (
+        {loading && <div className="text-center mt-4 text-muted">Verifying code...</div>}
+
+        {!verified && (
+          <VerificationModal show={showModal} onClose={handleModalClose} />
+        )}
+
+        {verified && centerId && verificationCode && (
+          <RegisterForm />
+        )}
+
+        {verified && (!centerId || !verificationCode) && (
           <div className="text-center mt-4 text-muted">
             Loading campaigns...
           </div>
-        ) : canRenderForm ? (
-          <RegisterForm />
-        ) : (
-          <p className="text-center mt-4 text-muted">
-            Please verify your code to proceed with registration.
-          </p>
         )}
-
-        <VerificationModal
-          show={!verified && showModal}
-          onClose={() => setShowModal(false)}
-        />
       </AuthWrapper>
     </Layout>
   );
 };
+
 
 export default Register;

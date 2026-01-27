@@ -26,13 +26,21 @@ const LoginForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     try {
-      const result = await dispatch(loginUser(formData)).unwrap();
-      showToast("success", result.message || "Login successful!");
-      navigate("/campaign-list");
+      const resultAction = await dispatch(loginUser(formData));
+      if (loginUser.fulfilled.match(resultAction)) {
+        const { data, message } = resultAction.payload;
+        const user = data.user;
+        showToast("success", message);
+        if (user.roles.includes("super_admin")) navigate("/dashboard");
+        else navigate("/campaign-list");
+      } else {
+        const errorMessage =
+          resultAction.payload?.message || "Invalid credentials";
+        showToast("error", errorMessage);
+      }
     } catch (err) {
-      showToast("error", err.message || "Invalid credentials, try again.");
+      showToast("error", "Something went wrong, try again.");
     }
   };
 
@@ -77,6 +85,7 @@ const LoginForm = () => {
         >
           {loading ? <Spinner animation="border" size="sm" /> : "Sign in"}
         </Button>
+
         <div className="text-center mt-3">
           Don’t have an account? <Link to="/signup">Sign up</Link>
         </div>

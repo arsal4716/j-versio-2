@@ -41,11 +41,10 @@ const CenterForm = ({ center = null, onSuccess }) => {
   });
 
   const [referrerInput, setReferrerInput] = useState("");
-  const [fileKey, setFileKey] = useState(Date.now()); // For resetting file input
+  const [fileKey, setFileKey] = useState(Date.now());
 
   useEffect(() => {
     if (center) {
-      // Convert center data to form structure
       setFormData({
         name: center.name || "",
         verificationCode: center.verificationCode || "",
@@ -127,44 +126,22 @@ const CenterForm = ({ center = null, onSuccess }) => {
     handleChange("settings.referrers", newReferrers);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    // Prepare form data for API
-    const formDataToSend = new FormData();
-    
-    // Add text fields
-    formDataToSend.append('name', formData.name);
-    formDataToSend.append('verificationCode', formData.verificationCode);
-    formDataToSend.append('centerAdminEmail', formData.centerAdminEmail);
-    formDataToSend.append('phone', formData.phone || '');
-    formDataToSend.append('proxy', JSON.stringify(formData.proxy));
-    formDataToSend.append('googleSheets', JSON.stringify({
-      masterSheetId: formData.googleSheets.masterSheetId,
-      adminSheetId: formData.googleSheets.adminSheetId
-    }));
-    formDataToSend.append('settings', JSON.stringify(formData.settings));
-    formDataToSend.append('campaigns', JSON.stringify(formData.campaigns));
-    
-    // Add file if present
-    if (formData.googleSheets.clientKeyFile instanceof File) {
-      formDataToSend.append('clientKeyFile', formData.googleSheets.clientKeyFile);
-    }
+  const result = await dispatch(
+    center
+      ? updateCenter({
+          id: center._id,
+          centerData: formData,
+        })
+      : createCenter(formData)
+  );
 
-    const result = await dispatch(
-      center
-        ? updateCenter({ 
-            id: center._id, 
-            centerData: formDataToSend,
-            isFormData: true 
-          })
-        : createCenter(formDataToSend)
-    );
-    
-    if (!result.error) {
-      onSuccess?.();
-    }
-  };
+  if (!result.error) {
+    onSuccess?.();
+  }
+};
 
   const updateCampaign = (index, key, value) => {
     setFormData((prev) => {
@@ -248,7 +225,7 @@ const CenterForm = ({ center = null, onSuccess }) => {
                   }
                   required
                   placeholder="Enter unique verification code"
-                  disabled={!!center} // Can't change verification code after creation
+                  disabled={!!center} 
                 />
                 {center && (
                   <Form.Text className="text-muted">

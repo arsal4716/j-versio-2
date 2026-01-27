@@ -27,9 +27,7 @@ const { centerId, verificationCode } = useSelector(
   });
 
 useEffect(() => {
-  console.log("useEffect triggered:", { centerId, verificationCode });
   if (centerId && verificationCode) {
-    console.log(" Dispatching getAllCampaigns:", centerId, verificationCode);
     dispatch(getAllCampaigns({ centerId, verificationCode }));
   }
 }, [centerId, verificationCode, dispatch]);

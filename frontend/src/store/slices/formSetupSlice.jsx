@@ -178,7 +178,6 @@ const slice = createSlice({
         s.error = null;
       })
       .addCase(getCampaignsForCenter.fulfilled, (s, a) => {
-        console.log("REDUCER CAMPAIGNS PAYLOAD:", a.payload);
         s.campaignsLoading = false;
         s.campaigns = a.payload || [];
       })

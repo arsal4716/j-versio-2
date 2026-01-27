@@ -11,7 +11,6 @@ const Register = () => {
   const { verified, centerId, verificationCode } = useSelector(
     (state) => state.verification
   );
-  console.log('verficaiton', verified, centerId, verificationCode)
 
   useEffect(() => {
     if (!verified) {

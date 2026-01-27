@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const centerSchema = new mongoose.Schema({
   name: { type: String, required: true },
   verificationCode: { type: String, required: true, unique: true },
-  centerAdminEmail: { type: String, unique: true },
+  centerAdminEmail: { type: String, required: true, unique: true },
   proxy: {
     provider: { type: String, default: "decodo" },
     username: { type: String },

@@ -5,7 +5,6 @@ const ensureSuperAdmin = async () => {
 
   const exists = await User.findOne({ email });
   if (exists) {
-    console.log("Super admin already exists");
     return;
   }
 
@@ -19,7 +18,6 @@ const ensureSuperAdmin = async () => {
     roles: ["super_admin"],
   });
 
-  console.log("Super admin created successfully");
 };
 
 module.exports = ensureSuperAdmin;

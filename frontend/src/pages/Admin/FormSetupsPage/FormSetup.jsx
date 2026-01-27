@@ -92,15 +92,12 @@ const FormSetupsPage = () => {
 
   // Handle center change
 const handleCenterChange = (centerId) => {
-  console.log("CENTER CHANGED:", centerId);
 
   setSelectedCenter(centerId);
   setSelectedCampaign("");
   dispatch(clearCampaigns());
 
   const center = centers.find((c) => c._id === centerId);
-  console.log("FOUND CENTER:", center);
-
   if (center) {
     dispatch(
       getCampaignsForCenter({
@@ -112,8 +109,6 @@ const handleCenterChange = (centerId) => {
 };
 
   const handleCampaignChange = (campaignName) => {
-      console.log("CAMPAIGN SELECTED:", campaignName);
-
   setSelectedCampaign(campaignName);
 
   if (campaignName && selectedCenter) {

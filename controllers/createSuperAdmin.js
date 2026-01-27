@@ -19,12 +19,10 @@ const createSuperAdmin = async () => {
     const existing = await registerUser.findByEmail(superAdminData.email); 
 
     if (existing) {
-      console.log("Super Admin already exists:", superAdminData.email);
       return;
     }
 
     const result = await registerUser(superAdminData);
-    console.log("Super Admin created successfully:", result.email);
     process.exit(0);
   } catch (err) {
     console.error("Failed to create Super Admin:", err);

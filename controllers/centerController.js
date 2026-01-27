@@ -16,14 +16,14 @@ export const createCenter = async (req, res, next) => {
       googleSheets,
       settings,
     } = req.body;
-
     if (typeof proxy === "string") proxy = JSON.parse(proxy);
-    if (typeof googleSheets === "string") googleSheets = JSON.parse(googleSheets);
+    if (typeof googleSheets === "string")
+      googleSheets = JSON.parse(googleSheets);
     if (typeof settings === "string") settings = JSON.parse(settings);
     if (typeof settings?.deviceDistribution === "string")
       settings.deviceDistribution = JSON.parse(settings.deviceDistribution);
     if (typeof req.body.campaigns === "string")
-      req.body.campaigns = JSON.parse(req.body.campaigns);  
+      req.body.campaigns = JSON.parse(req.body.campaigns);
 
     const existingCenter = await Center.findOne({ verificationCode });
     if (existingCenter) {
@@ -60,7 +60,7 @@ export const createCenter = async (req, res, next) => {
         masterSheetId: googleSheets?.masterSheetId,
         adminSheetId: googleSheets?.adminSheetId,
       },
-      campaigns: Array.isArray(req.body.campaigns) ? req.body.campaigns : [], 
+      campaigns: Array.isArray(req.body.campaigns) ? req.body.campaigns : [],
 
       settings: {
         typingSpeed: settings?.typingSpeed || 800,
@@ -84,12 +84,10 @@ export const createCenter = async (req, res, next) => {
       data: center,
       status: STATUS_CODES.CREATED,
     });
-
   } catch (error) {
     next(error);
   }
 };
-
 
 export const getCenters = async (req, res, next) => {
   try {
@@ -103,16 +101,11 @@ export const getCenters = async (req, res, next) => {
         { verificationCode: { $regex: search, $options: "i" } },
       ];
     }
-    
-    // FIX: Check if user has super_admin role in the roles array
-    const isSuperAdmin = req.user.roles?.includes('super_admin');
-    console.log('User roles:', req.user.roles, 'isSuperAdmin:', isSuperAdmin);
-    
+
+    const isSuperAdmin = req.user.roles?.includes("super_admin");
     if (!isSuperAdmin) {
       filter.createdBy = req.user._id;
     }
-
-    console.log('Filter for centers:', filter);
 
     const centers = await Center.find(filter)
       .populate("createdBy", "name email")
@@ -121,8 +114,6 @@ export const getCenters = async (req, res, next) => {
       .sort({ createdAt: -1 });
 
     const total = await Center.countDocuments(filter);
-
-    console.log(`Found ${centers.length} centers out of ${total} total`);
 
     return success(res, {
       message: "Centers fetched successfully",
@@ -134,7 +125,7 @@ export const getCenters = async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error('Error in getCenters:', error);
+    console.error("Error in getCenters:", error);
     next(error);
   }
 };
@@ -143,7 +134,7 @@ export const getCenterById = async (req, res, next) => {
   try {
     const center = await Center.findById(req.params.id).populate(
       "createdBy",
-      "name center Admin Email"
+      "name center Admin Email",
     );
 
     if (!center) {
@@ -183,20 +174,27 @@ export const updateCenter = async (req, res, next) => {
       });
     }
 
-    if (
-      req.user.role !== "super_admin" &&
-      center.createdBy.toString() !== req.user._id.toString()
-    ) {
+    const isSuperAdmin = req.user.roles?.includes("super_admin");
+    const isOwner = center.createdBy?.toString() === req.user._id.toString();
+
+    if (!isSuperAdmin && !isOwner) {
       return fail(res, {
         message: "Access denied",
         status: STATUS_CODES.FORBIDDEN,
       });
     }
 
+    const jsonFields = ["campaigns", "settings", "proxy", "googleSheets"];
+    jsonFields.forEach((field) => {
+      if (req.body[field] && typeof req.body[field] === "string") {
+        req.body[field] = JSON.parse(req.body[field]);
+      }
+    });
+
     const updatedCenter = await Center.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).populate("createdBy", "name centerAdminEmail");
 
     return success(res, {
@@ -219,7 +217,7 @@ export const deleteCenter = async (req, res, next) => {
       });
     }
 
-    if (req.user.role !== "super_admin") {
+    if (!req.user.roles.includes("super_admin")) {
       return fail(res, {
         message: "Access denied. Only super admin can delete centers.",
         status: STATUS_CODES.FORBIDDEN,

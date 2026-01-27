@@ -18,7 +18,6 @@ function safeParse(value) {
 exports.createFormSetup = async (req, res, next) => {
   try {
     const body = { ...req.body };
-    console.log("setup form", body);
     body.fields = safeParse(body.fields) || [];
     body.centerId = body.centerId;
     body.campaignName = body.campaignName;
@@ -309,13 +308,6 @@ exports.deleteFormSetup = async (req, res, next) => {
 exports.getCampaignsForCenter = async (req, res, next) => {
   try {
     const { centerId, verificationCode } = req.query;
-    console.log(
-      "Fetching campaigns for verificationCode:",
-      verificationCode,
-      "centerId:",
-      centerId
-    );
-
     if (!centerId || !verificationCode) {
       return fail(res, {
         message: "centerId and verificationCode are required",
@@ -337,8 +329,6 @@ exports.getCampaignsForCenter = async (req, res, next) => {
     const campaigns = (center.campaigns || [])
       .filter((c) => c.isActive)
       .map((c) => ({ _id: c._id, name: c.name }));
-
-    console.log("Active campaigns:", campaigns);
 
     return success(res, { message: "Campaign list fetched", data: campaigns });
   } catch (err) {

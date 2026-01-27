@@ -1,53 +1,54 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Container, 
-  Row, 
-  Col, 
-  Card, 
-  Table, 
-  Button, 
-  Badge, 
+import React, { useState, useEffect } from "react";
+import {
+  Container,
+  Row,
+  Col,
+  Card,
+  Table,
+  Button,
+  Badge,
   Form,
   InputGroup,
   Modal,
   Spinner,
   Alert,
-  Pagination
-} from 'react-bootstrap';
-import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, useLocation, Routes, Route } from 'react-router-dom';
-import { 
-  getCenters, 
+  Pagination,
+} from "react-bootstrap";
+import { useDispatch, useSelector } from "react-redux";
+import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
+import {
+  getCenters,
   deleteCenter,
-  setCurrentCenter 
-} from '../../../store/slices/centerSlice';
-import { 
-  Search, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Eye, 
+  setCurrentCenter,
+} from "../../../store/slices/centerSlice";
+import {
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  Eye,
   Building,
   Filter,
-  Download
-} from 'lucide-react';
-import Swal from 'sweetalert2';
-import CenterForm from '../../../components/Forms/CenterForm/CenterForm';
+  Download,
+} from "lucide-react";
+import Swal from "sweetalert2";
+import CenterForm from "../../../components/Forms/CenterForm/CenterForm";
 
 const CentersList = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
-  const { centers, loading, error, total, totalPages, currentPage } = useSelector((state) => state.centers);
-  
-  const [searchTerm, setSearchTerm] = useState('');
+  const { centers, loading, error, total, totalPages, currentPage } =
+    useSelector((state) => state.centers);
+
+  const [searchTerm, setSearchTerm] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [filters, setFilters] = useState({
     page: 1,
     limit: 10,
-    sort: 'createdAt',
-    order: 'desc'
+    sort: "createdAt",
+    order: "desc",
   });
 
   useEffect(() => {
@@ -62,7 +63,7 @@ const CentersList = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    setFilters(prev => ({ ...prev, page: 1 }));
+    setFilters((prev) => ({ ...prev, page: 1 }));
     fetchCenters();
   };
 
@@ -76,20 +77,20 @@ const CentersList = () => {
       try {
         await dispatch(deleteCenter(selectedCenter._id)).unwrap();
         Swal.fire({
-          title: 'Deleted!',
-          text: 'Center has been deleted successfully.',
-          icon: 'success',
+          title: "Deleted!",
+          text: "Center has been deleted successfully.",
+          icon: "success",
           timer: 2000,
-          showConfirmButton: false
+          showConfirmButton: false,
         });
         setShowDeleteModal(false);
         setSelectedCenter(null);
         fetchCenters();
       } catch (error) {
         Swal.fire({
-          title: 'Error!',
-          text: error.message || 'Failed to delete center.',
-          icon: 'error'
+          title: "Error!",
+          text: error.message || "Failed to delete center.",
+          icon: "error",
         });
       }
     }
@@ -106,42 +107,42 @@ const CentersList = () => {
   };
 
   const handlePageChange = (page) => {
-    setFilters(prev => ({ ...prev, page }));
+    setFilters((prev) => ({ ...prev, page }));
   };
 
   const renderPagination = () => {
     if (totalPages <= 1) return null;
-    
+
     const items = [];
     const maxVisible = 5;
     let startPage = Math.max(1, filters.page - Math.floor(maxVisible / 2));
     let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-    
+
     if (endPage - startPage + 1 < maxVisible) {
       startPage = Math.max(1, endPage - maxVisible + 1);
     }
-    
+
     for (let i = startPage; i <= endPage; i++) {
       items.push(
-        <Pagination.Item 
-          key={i} 
+        <Pagination.Item
+          key={i}
           active={i === filters.page}
           onClick={() => handlePageChange(i)}
         >
           {i}
-        </Pagination.Item>
+        </Pagination.Item>,
       );
     }
-    
+
     return (
       <Pagination className="mb-0">
-        <Pagination.Prev 
-          disabled={filters.page === 1} 
+        <Pagination.Prev
+          disabled={filters.page === 1}
           onClick={() => handlePageChange(filters.page - 1)}
         />
         {items}
-        <Pagination.Next 
-          disabled={filters.page === totalPages} 
+        <Pagination.Next
+          disabled={filters.page === totalPages}
           onClick={() => handlePageChange(filters.page + 1)}
         />
       </Pagination>
@@ -160,9 +161,9 @@ const CentersList = () => {
                 Manage all centers, campaigns, and their configurations
               </p>
             </div>
-            <Button 
-              variant="primary" 
-              onClick={() => navigate('/centers/new')}
+            <Button
+              variant="primary"
+              onClick={() => navigate("/centers/new")}
               className="d-flex align-items-center"
             >
               <Plus size={20} className="me-2" />
@@ -204,7 +205,10 @@ const CentersList = () => {
               </div>
               <div className="text-center">
                 <h3 className="mb-0">
-                  {centers?.reduce((acc, c) => acc + (c.campaigns?.length || 0), 0)}
+                  {centers?.reduce(
+                    (acc, c) => acc + (c.campaigns?.length || 0),
+                    0,
+                  )}
                 </h3>
                 <small className="text-muted">Total Campaigns</small>
               </div>
@@ -218,11 +222,15 @@ const CentersList = () => {
         <Card.Header className="bg-white border-0 d-flex justify-content-between align-items-center">
           <h5 className="mb-0">All Centers</h5>
           <div className="d-flex gap-2">
-            <Form.Select size="sm" style={{ width: 'auto' }}>
+            <Form.Select size="sm" style={{ width: "auto" }}>
               <option>Sort by: Newest</option>
               <option>Sort by: Name A-Z</option>
             </Form.Select>
-            <Button variant="outline-primary" size="sm" className="d-flex align-items-center">
+            <Button
+              variant="outline-primary"
+              size="sm"
+              className="d-flex align-items-center"
+            >
               <Download size={16} className="me-1" />
               Export
             </Button>
@@ -231,7 +239,7 @@ const CentersList = () => {
         <Card.Body>
           {error && (
             <Alert variant="danger" dismissible>
-              {error.message || 'Failed to load centers'}
+              {error.message || "Failed to load centers"}
             </Alert>
           )}
 
@@ -267,7 +275,9 @@ const CentersList = () => {
                             </div>
                             <div className="flex-grow-1">
                               <strong>{center.name}</strong>
-                              <div className="small text-muted">ID: {center._id}</div>
+                              <div className="small text-muted">
+                                ID: {center._id}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -280,7 +290,11 @@ const CentersList = () => {
                         <td>
                           <div className="d-flex flex-wrap gap-1">
                             {center.campaigns?.slice(0, 2).map((campaign) => (
-                              <Badge key={campaign._id} bg="info" className="mb-1">
+                              <Badge
+                                key={campaign._id}
+                                bg="info"
+                                className="mb-1"
+                              >
                                 {campaign.name}
                               </Badge>
                             ))}
@@ -292,8 +306,12 @@ const CentersList = () => {
                           </div>
                         </td>
                         <td>
-                          <Badge bg={center.proxy?.provider ? 'success' : 'secondary'}>
-                            {center.proxy?.provider || 'None'}
+                          <Badge
+                            bg={
+                              center.proxy?.provider ? "success" : "secondary"
+                            }
+                          >
+                            {center.proxy?.provider || "None"}
                           </Badge>
                         </td>
                         <td>
@@ -332,17 +350,16 @@ const CentersList = () => {
                   </tbody>
                 </Table>
               </div>
-              
+
               {/* Pagination */}
               {totalPages > 1 && (
                 <div className="d-flex justify-content-between align-items-center mt-4">
                   <div>
-                    Showing {(filters.page - 1) * filters.limit + 1} to{' '}
-                    {Math.min(filters.page * filters.limit, total)} of {total} centers
+                    Showing {(filters.page - 1) * filters.limit + 1} to{" "}
+                    {Math.min(filters.page * filters.limit, total)} of {total}{" "}
+                    centers
                   </div>
-                  <div>
-                    {renderPagination()}
-                  </div>
+                  <div>{renderPagination()}</div>
                 </div>
               )}
             </>
@@ -351,9 +368,14 @@ const CentersList = () => {
               <Building size={64} className="text-muted mb-3" />
               <h5>No centers found</h5>
               <p className="text-muted mb-4">
-                {searchTerm ? 'Try a different search term' : 'Get started by creating your first center'}
+                {searchTerm
+                  ? "Try a different search term"
+                  : "Get started by creating your first center"}
               </p>
-              <Button variant="primary" onClick={() => navigate('/centers/new')}>
+              <Button
+                variant="primary"
+                onClick={() => navigate("/centers/new")}
+              >
                 <Plus size={20} className="me-2" />
                 Create Center
               </Button>
@@ -363,18 +385,23 @@ const CentersList = () => {
       </Card>
 
       {/* Delete Confirmation Modal */}
-      <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
+      <Modal
+        show={showDeleteModal}
+        onHide={() => setShowDeleteModal(false)}
+        centered
+      >
         <Modal.Header closeButton>
           <Modal.Title>Confirm Delete</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Alert variant="warning" className="mb-0">
             <p className="mb-0">
-              Are you sure you want to delete <strong>{selectedCenter?.name}</strong>?
+              Are you sure you want to delete{" "}
+              <strong>{selectedCenter?.name}</strong>?
             </p>
             <p className="mb-0 mt-2">
-              This will also delete all associated campaigns, form setups, and users.
-              This action cannot be undone.
+              This will also delete all associated campaigns, form setups, and
+              users. This action cannot be undone.
             </p>
           </Alert>
         </Modal.Body>
@@ -395,7 +422,7 @@ const CenterFormPage = () => {
   const navigate = useNavigate();
   const { currentCenter } = useSelector((state) => state.centers);
   const location = useLocation();
-  const isEditMode = location.pathname.includes('/edit/');
+  const isEditMode = location.pathname.includes("/edit/");
 
   return (
     <Container fluid>
@@ -403,20 +430,20 @@ const CenterFormPage = () => {
         <Col>
           <div className="d-flex justify-content-between align-items-center">
             <div>
-              <Button 
-                variant="outline-secondary" 
-                onClick={() => navigate('/centers')}
+              <Button
+                variant="outline-secondary"
+                onClick={() => navigate("/centers")}
                 className="mb-3"
               >
                 ← Back to Centers
               </Button>
               <h1 className="h3 mb-2">
-                {isEditMode ? 'Edit Center' : 'Create New Center'}
+                {isEditMode ? "Edit Center" : "Create New Center"}
               </h1>
               <p className="text-muted mb-0">
-                {isEditMode 
-                  ? 'Update center details and configurations' 
-                  : 'Add a new center with campaigns and settings'}
+                {isEditMode
+                  ? "Update center details and configurations"
+                  : "Add a new center with campaigns and settings"}
               </p>
             </div>
           </div>
@@ -427,9 +454,9 @@ const CenterFormPage = () => {
         <Col lg={10} xl={8}>
           <Card className="border-0 shadow-sm">
             <Card.Body>
-              <CenterForm 
+              <CenterForm
                 center={isEditMode ? currentCenter : null}
-                onSuccess={() => navigate('/centers')}
+                onSuccess={() => navigate("/centers")}
               />
             </Card.Body>
           </Card>
@@ -447,7 +474,10 @@ const CenterDetailPage = () => {
     return (
       <Container fluid>
         <Alert variant="warning">
-          Center not found. <Button variant="link" onClick={() => navigate('/centers')}>Go back</Button>
+          Center not found.{" "}
+          <Button variant="link" onClick={() => navigate("/centers")}>
+            Go back
+          </Button>
         </Alert>
       </Container>
     );
@@ -459,19 +489,20 @@ const CenterDetailPage = () => {
         <Col>
           <div className="d-flex justify-content-between align-items-center">
             <div>
-              <Button 
-                variant="outline-secondary" 
-                onClick={() => navigate('/centers')}
+              <Button
+                variant="outline-secondary"
+                onClick={() => navigate("/centers")}
                 className="mb-3"
               >
                 ← Back to Centers
               </Button>
               <h1 className="h3 mb-2">{currentCenter.name}</h1>
               <p className="text-muted mb-0">
-                Center ID: {currentCenter._id} | Created: {new Date(currentCenter.createdAt).toLocaleDateString()}
+                Center ID: {currentCenter._id} | Created:{" "}
+                {new Date(currentCenter.createdAt).toLocaleDateString()}
               </p>
             </div>
-            <Button 
+            <Button
               variant="primary"
               onClick={() => navigate(`/centers/edit/${currentCenter._id}`)}
             >
@@ -507,7 +538,7 @@ const CenterDetailPage = () => {
                 </Col>
                 <Col md={6} className="mb-3">
                   <div className="small text-muted">Phone</div>
-                  <div>{currentCenter.phone || 'Not set'}</div>
+                  <div>{currentCenter.phone || "Not set"}</div>
                 </Col>
               </Row>
             </Card.Body>
@@ -527,7 +558,10 @@ const CenterDetailPage = () => {
               {currentCenter.campaigns?.length > 0 ? (
                 <div className="list-group">
                   {currentCenter.campaigns.map((campaign) => (
-                    <div key={campaign._id} className="list-group-item border-0 px-0 py-2">
+                    <div
+                      key={campaign._id}
+                      className="list-group-item border-0 px-0 py-2"
+                    >
                       <div className="d-flex justify-content-between align-items-center">
                         <div>
                           <h6 className="mb-1">{campaign.name}</h6>
@@ -535,8 +569,8 @@ const CenterDetailPage = () => {
                             Sheet: {campaign.sheetTabId}
                           </small>
                         </div>
-                        <Badge bg={campaign.isActive ? 'success' : 'secondary'}>
-                          {campaign.isActive ? 'Active' : 'Inactive'}
+                        <Badge bg={campaign.isActive ? "success" : "secondary"}>
+                          {campaign.isActive ? "Active" : "Inactive"}
                         </Badge>
                       </div>
                     </div>
@@ -561,15 +595,15 @@ const CenterDetailPage = () => {
               <Row>
                 <Col md={6} className="mb-3">
                   <div className="small text-muted">Provider</div>
-                  <div>{currentCenter.proxy?.provider || 'Not set'}</div>
+                  <div>{currentCenter.proxy?.provider || "Not set"}</div>
                 </Col>
                 <Col md={6} className="mb-3">
                   <div className="small text-muted">Username</div>
-                  <div>{currentCenter.proxy?.username || 'Not set'}</div>
+                  <div>{currentCenter.proxy?.username || "Not set"}</div>
                 </Col>
                 <Col md={6} className="mb-3">
                   <div className="small text-muted">Type</div>
-                  <div>{currentCenter.proxy?.type || 'Not set'}</div>
+                  <div>{currentCenter.proxy?.type || "Not set"}</div>
                 </Col>
               </Row>
             </Card.Body>
@@ -587,13 +621,13 @@ const CenterDetailPage = () => {
                 <Col md={6} className="mb-3">
                   <div className="small text-muted">Master Sheet ID</div>
                   <div className="text-truncate">
-                    {currentCenter.googleSheets?.masterSheetId || 'Not set'}
+                    {currentCenter.googleSheets?.masterSheetId || "Not set"}
                   </div>
                 </Col>
                 <Col md={6} className="mb-3">
                   <div className="small text-muted">Admin Sheet ID</div>
                   <div className="text-truncate">
-                    {currentCenter.googleSheets?.adminSheetId || 'Not set'}
+                    {currentCenter.googleSheets?.adminSheetId || "Not set"}
                   </div>
                 </Col>
                 <Col md={12} className="mb-3">
@@ -630,9 +664,14 @@ const CenterDetailPage = () => {
                 <Col md={3} className="mb-3">
                   <div className="small text-muted">Device Distribution</div>
                   <div>
-                    Desktop: {currentCenter.settings?.deviceDistribution?.desktop || 60}%<br />
-                    Tablet: {currentCenter.settings?.deviceDistribution?.tablet || 20}%<br />
-                    Mobile: {currentCenter.settings?.deviceDistribution?.mobile || 20}%
+                    Desktop:{" "}
+                    {currentCenter.settings?.deviceDistribution?.desktop || 60}%
+                    <br />
+                    Tablet:{" "}
+                    {currentCenter.settings?.deviceDistribution?.tablet || 20}%
+                    <br />
+                    Mobile:{" "}
+                    {currentCenter.settings?.deviceDistribution?.mobile || 20}%
                   </div>
                 </Col>
                 <Col md={3} className="mb-3">

@@ -35,7 +35,8 @@ async function appendRow({ keyFile, spreadsheetId, tabName, row }) {
   });
 
   const sheets = google.sheets({ version: "v4", auth });
-  const range = `${tabName}!A1`;
+const safeTabName = `'${tabName.replace(/'/g, "''")}'`;
+const range = `${safeTabName}!A1`;
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: String(spreadsheetId).trim(),

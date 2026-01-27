@@ -15,49 +15,61 @@ function getRandomWindowSize() {
 }
 
 class BrowserService {
-  async launchBrowserWithProxy({ proxyUrl, proxyUsername, proxyPassword, referrers }) {
+  async launchBrowserWithProxy({
+    proxyUrl,
+    proxyUsername,
+    proxyPassword,
+    referrers,
+  }) {
     const { width, height } = getRandomWindowSize();
-  let browser;
+    let browser;
 
-     browser = await puppeteer.launch({
-    args: [
-      `--proxy-server=${proxyUrl}`,
-      `--no-proxy-server-bypass`,
-      "--disable-ipv6",
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
-      "--disable-gpu",
-      "--ignore-certificate-errors",
-      "--disable-ipv6",
-      "--disable-infobars",
-      "--disable-blink-features=AutomationControlled",
-      "--enable-automation",
-      "--disable-extensions",
-      "--hide-scrollbars",
-      "--mute-audio",
-      "--disable-background-networking",
-      "--disable-default-apps",
-      "--disable-sync",
-      "--disable-translate",
-      "--disable-plugins",
-      "--disable-software-rasterizer",
-      "--disable-web-security",
-      "--disable-features=IsolateOrigins,site-per-process",
-      `--window-size=${width},${height}`,
-    ],
-    headless: false,
-    ignoreHTTPSErrors: true,
-  })
+    browser = await puppeteer.launch({
+        executablePath: "/usr/bin/chromium-browser", 
+      args: [
+        `--proxy-server=${proxyUrl}`,
+        `--no-proxy-server-bypass`,
+        "--disable-ipv6",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--disable-gpu",
+        "--ignore-certificate-errors",
+        "--disable-ipv6",
+        "--disable-infobars",
+        "--disable-blink-features=AutomationControlled",
+        "--enable-automation",
+        "--disable-extensions",
+        "--hide-scrollbars",
+        "--mute-audio",
+        "--disable-background-networking",
+        "--disable-default-apps",
+        "--disable-sync",
+        "--disable-translate",
+        "--disable-plugins",
+        "--disable-software-rasterizer",
+        "--disable-web-security",
+        "--disable-features=IsolateOrigins,site-per-process",
+        `--window-size=${width},${height}`,
+      ],
+      headless: "new",
+      ignoreHTTPSErrors: true,
+    });
 
     const page = await browser.newPage();
 
     if (proxyUsername && proxyPassword) {
-      await page.authenticate({ username: proxyUsername, password: proxyPassword });
+      await page.authenticate({
+        username: proxyUsername,
+        password: proxyPassword,
+      });
     }
 
-    const refList = Array.isArray(referrers) && referrers.length ? referrers : DEFAULT_REFERRERS;
+    const refList =
+      Array.isArray(referrers) && referrers.length
+        ? referrers
+        : DEFAULT_REFERRERS;
     const selectedReferer = getRandomElement(refList);
 
     await page.setExtraHTTPHeaders({ referer: selectedReferer });
@@ -85,7 +97,10 @@ class BrowserService {
 
   async waitForSelectorWithTimeout(page, selector, timeoutMs = 5000) {
     try {
-      await page.waitForSelector(selector, { visible: true, timeout: timeoutMs });
+      await page.waitForSelector(selector, {
+        visible: true,
+        timeout: timeoutMs,
+      });
       return true;
     } catch {
       return false;

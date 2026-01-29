@@ -102,11 +102,11 @@ class BrowserService {
     await page.evaluate((sel) => {
       const el = document.querySelector(sel);
       if (el) {
-        const offset = Math.floor(Math.random() * 80); // random offset
+        const offset = Math.floor(Math.random() * 80); 
         window.scrollTo({ top: el.offsetTop - offset, behavior: "smooth" });
       }
     }, selector);
-    await page.waitForTimeout(Math.floor(Math.random() * 400 + 200)); // small random pause
+  await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 400 + 200)));
   }
 
   async hoverAndClick(page, selector) {
@@ -115,10 +115,9 @@ class BrowserService {
 
     await this.scrollIntoViewWithOffset(page, selector);
 
-    // random mouse movement before click
     await page.mouse.move(Math.random() * 300, Math.random() * 300);
     await page.hover(selector);
-    await page.waitForTimeout(Math.floor(Math.random() * 500 + 200));
+  await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 400 + 200)));
     await page.click(selector);
     return true;
   }

@@ -37,13 +37,10 @@ const Layout = ({ children }) => {
         </div>
       )}
 
-      {/* Header - Show always */}
-      <Header />
+      {/* <Header /> */}
 
-      {/* Sidebar - Only for super_admin routes */}
       {showSidebar && <Sidebar />}
 
-      {/* Main Content */}
       <main className={showSidebar ? "ps-lg-250" : ""}>
         <div className="container-fluid py-4">
           {children}

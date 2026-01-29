@@ -23,27 +23,27 @@ const CampaignFormPage = () => {
   const submissionState = useSelector((state) => state.formSubmission);
 
   const [formData, setFormData] = useState({});
+
   const [timeSpent, setTimeSpent] = useState(0);
-
-  // Start timer
+  const [timerActive, setTimerActive] = useState(false);
   useEffect(() => {
-    const timer = setInterval(() => setTimeSpent((prev) => prev + 1), 1000);
+    let timer;
+    if (timerActive) {
+      timer = setInterval(() => setTimeSpent((prev) => prev + 1), 1000);
+    }
     return () => clearInterval(timer);
-  }, []);
-
-  // Fetch form fields
+  }, [timerActive]);
   useEffect(() => {
     dispatch(fetchFormFields({ centerId, campaignName }));
   }, [centerId, campaignName, dispatch]);
 
-  // Handle submission state
   useEffect(() => {
     if (!submissionState.message) return;
 
     if (submissionState.success) {
       notifySuccess(submissionState.message);
       setFormData({});
-      setTimeSpent(0); // reset timer on success
+      setTimeSpent(0);
     } else if (submissionState.error) {
       notifyError(submissionState.message);
     }
@@ -56,14 +56,11 @@ const CampaignFormPage = () => {
     dispatch,
   ]);
 
-  // Handle input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Phone only digits, max 10
     if (name === "phone") {
       if (!/^\d*$/.test(value) || value.length > 10) return;
     }
-    // Zip code only digits, max 5
     if (name === "zipCode") {
       if (!/^\d*$/.test(value) || value.length > 5) return;
     }
@@ -72,13 +69,15 @@ const CampaignFormPage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    dispatch(submitCampaignForm({ centerId, campaignName, formData }));
+    setTimeSpent(0);
+    setTimerActive(true);
+    dispatch(submitCampaignForm({ centerId, campaignName, formData })).finally(
+      () => setTimerActive(false),
+    );
   };
 
   if (loading) return <div>Loading form…</div>;
   if (error) return <div>{error}</div>;
-
-  // Ensure "state" field exists even if backend didn't provide it
   const allFields = fields.some((f) => f.name === "state")
     ? fields
     : [
@@ -117,7 +116,13 @@ const CampaignFormPage = () => {
           }}
         >
           <h2 className="mb-2 text-center">Get Started Now</h2>
-          <p className="text-center text-muted">Time on page: {timeSpent}s</p>
+          <p className="text-center text-danger">
+            Form Submission Time:{" "}
+            {Math.floor(timeSpent / 60)
+              .toString()
+              .padStart(2, "0")}
+            :{(timeSpent % 60).toString().padStart(2, "0")}
+          </p>
 
           <Form onSubmit={handleSubmit}>
             <Row>

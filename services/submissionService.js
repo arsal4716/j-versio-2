@@ -385,7 +385,9 @@ class SubmissionService {
     try {
       await browserService.scrollIntoViewWithOffset(page, submitSelector);
       await page.hover(submitSelector);
-      await page.waitForTimeout(Math.floor(Math.random() * 1000 + 500));
+      await new Promise((r) =>
+        setTimeout(r, Math.floor(Math.random() * 400 + 200)),
+      );
       await page.click(submitSelector);
       logger.debug("Form submitted");
 

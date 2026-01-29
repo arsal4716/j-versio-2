@@ -4,10 +4,6 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import { ValidationError, BrowserError } from "../utils/errorTypes.js";
 import logger from "../utils/logger.js";
 
-/**
- * ZIP proxy ports (rotation)
- * NOTE: keep your working ports list here.
- */
 const zipCodePorts = [
   10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012,
   10013, 10014, 10015, 10016, 10017, 10018, 10019, 10020, 10021, 10022, 10023,
@@ -16,8 +12,7 @@ const zipCodePorts = [
 
 let lastPortIndex = 0;
 const portUsageMap = new Map();
-const PORT_TIMEOUT = 240000; // 4 minutes
-
+const PORT_TIMEOUT = 240000;
 function getNextPort() {
   const now = Date.now();
   let attempts = 0;
@@ -67,10 +62,6 @@ async function verifyProxyIp(proxyUrl, ipCheckUrl) {
   return res?.data?.proxy?.ip ? res.data.proxy.ip : null;
 }
 
-/**
- * State -> port mapping (Decodo state gateway)
- * Port selects the state on state.decodo.com
- */
 const statePortMapping = {
   Alabama: 17001,
   Alaska: 17101,
@@ -202,19 +193,15 @@ function normalizeStateName(input) {
   if (!input) return null;
 
   const raw = String(input).trim();
-
-  // 2-letter abbreviation
   if (/^[A-Za-z]{2}$/.test(raw)) {
     const name = stateAbbrevToName[raw.toUpperCase()];
     return name || null;
   }
 
-  // exact match
   if (Object.prototype.hasOwnProperty.call(statePortMapping, raw)) return raw;
 
-  // case-insensitive match
   const ci = Object.keys(statePortMapping).find(
-    (k) => k.toLowerCase() === raw.toLowerCase()
+    (k) => k.toLowerCase() === raw.toLowerCase(),
   );
   return ci || null;
 }
@@ -238,14 +225,18 @@ class ProxyService {
     const type = normalizeType(proxy.type);
 
     if (!provider) {
-      throw new ValidationError("Center proxy configuration is missing (provider)");
+      throw new ValidationError(
+        "Center proxy configuration is missing (provider)",
+      );
     }
 
     const usernameBase = proxy.username;
     const password = proxy.password;
 
     if (!usernameBase || !password) {
-      throw new ValidationError("Proxy username/password missing in center settings");
+      throw new ValidationError(
+        "Proxy username/password missing in center settings",
+      );
     }
 
     logger.info("Proxy selection started", {
@@ -256,7 +247,7 @@ class ProxyService {
 
     if (provider !== "decodo") {
       throw new ValidationError(
-        `Unsupported proxy provider: "${provider}". Expected "decodo".`
+        `Unsupported proxy provider: "${provider}". Expected "decodo".`,
       );
     }
 
@@ -281,7 +272,8 @@ class ProxyService {
 
           const ip = await verifyProxyIp(fullProxyUrl, ipCheckUrl);
 
-          if (!ip) throw new Error("Proxy verification failed (no IP returned)");
+          if (!ip)
+            throw new Error("Proxy verification failed (no IP returned)");
 
           logger.info("ZIP proxy verified", { ip, zipCode, port });
 
@@ -308,13 +300,15 @@ class ProxyService {
     const stateName = extractState(formData);
     if (!stateName) {
       throw new ValidationError(
-        "ZIP proxy failed (or missing) and state is missing/invalid. Please submit a valid US state."
+        "ZIP proxy failed (or missing) and state is missing/invalid. Please submit a valid US state.",
       );
     }
 
     const statePort = statePortMapping[stateName];
     if (!statePort) {
-      throw new ValidationError(`State proxy port not found for "${stateName}"`);
+      throw new ValidationError(
+        `State proxy port not found for "${stateName}"`,
+      );
     }
 
     const proxyHost = `state.decodo.com:${statePort}`;
@@ -368,7 +362,7 @@ class ProxyService {
 
     throw new BrowserError(
       `No available proxy found. ZIP failed and state proxy failed for "${stateName}". ` +
-        `Last error: ${lastErr?.message || "Unknown"}`
+        `Last error: ${lastErr?.message || "Unknown"}`,
     );
   }
 }

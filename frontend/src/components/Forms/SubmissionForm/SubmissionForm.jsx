@@ -1,8 +1,7 @@
-// components/SubmissionForm.jsx
 import { Form, Col } from "react-bootstrap";
 import { XCircle, CheckCircle } from "lucide-react";
 
-const SubmissionForm = ({ field, value, onChange, validation = {} }) => {
+const SubmissionForm = ({ field, value, onChange, validation = {}, options = [] }) => {
   const { label, name, type, placeholder, required } = field;
   const { isInvalid = false, isValid = false, tagText, tagColor } = validation;
 
@@ -13,15 +12,30 @@ const SubmissionForm = ({ field, value, onChange, validation = {} }) => {
     <Col md={colWidth} className="mb-3">
       <Form.Group controlId={inputId}>
         <div className="form-floating">
-          <Form.Control
-            type={type || "text"}
-            name={name}
-            placeholder={placeholder || label}
-            required={required}
-            value={value}
-            onChange={onChange}
-            className={isInvalid ? "form-control-highlighted" : ""}
-          />
+          {type === "select" ? (
+            <Form.Select
+              name={name}
+              value={value}
+              required={required}
+              onChange={onChange}
+              className={isInvalid ? "form-control-highlighted" : ""}
+            >
+              <option value="" disabled>Select {label}</option>
+              {options.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </Form.Select>
+          ) : (
+            <Form.Control
+              type={type || "text"}
+              name={name}
+              placeholder={placeholder || label}
+              required={required}
+              value={value}
+              onChange={onChange}
+              className={isInvalid ? "form-control-highlighted" : ""}
+            />
+          )}
           <label htmlFor={inputId}>{label}</label>
         </div>
 

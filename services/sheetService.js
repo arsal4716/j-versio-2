@@ -4,7 +4,8 @@ import fs from "fs";
 import { google } from "googleapis";
 import logger from "../utils/logger.js";
 
-const absPath = (p) => (path.isAbsolute(p) ? p : path.resolve(process.cwd(), p));
+const absPath = (p) =>
+  path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
 
 function normalizeTabName(name) {
   const tab = String(name || "").trim();
@@ -35,8 +36,8 @@ async function appendRow({ keyFile, spreadsheetId, tabName, row }) {
   });
 
   const sheets = google.sheets({ version: "v4", auth });
-const safeTabName = `'${tabName.replace(/'/g, "''")}'`;
-const range = `${safeTabName}!A1`;
+  const safeTabName = `'${tabName.replace(/'/g, "''")}'`;
+  const range = `${safeTabName}!A1`;
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: String(spreadsheetId).trim(),
@@ -58,7 +59,11 @@ function getValueFromSubmission(submission, fieldName) {
   return "";
 }
 
-function buildRowFromFormSetup(formSetup, submission, { centerName, campaignName }) {
+function buildRowFromFormSetup(
+  formSetup,
+  submission,
+  { centerName, campaignName },
+) {
   const fields = Array.isArray(formSetup?.fields) ? formSetup.fields : [];
   const row = [];
 
@@ -72,7 +77,7 @@ function buildRowFromFormSetup(formSetup, submission, { centerName, campaignName
     submission?.ipAddress || "",
     submission?.trustedForm || "",
     submission?.pageUrl || "",
-    new Date().toISOString()
+    new Date().toISOString(),
   );
 
   return row;
@@ -97,16 +102,15 @@ function resolveCenterKeyFile(center) {
 }
 
 class SheetService {
-
   async saveSubmissionToSheets(center, campaign, submissionResult, formSetup) {
     const adminKeyFile = "sheets/admin/admin.json";
     const centerKeyFile = resolveCenterKeyFile(center);
 
-    const adminSpreadsheetId = center?.googleSheets?.masterSheetId; 
-    const adminTabName = normalizeTabName(center?.name); 
+    const adminSpreadsheetId = center?.googleSheets?.masterSheetId;
+    const adminTabName = normalizeTabName(center?.name);
 
-    const centerSpreadsheetId = campaign?.sheetTabId; 
-    const centerTabName = normalizeTabName(campaign?.name); 
+    const centerSpreadsheetId = campaign?.sheetTabId;
+    const centerTabName = normalizeTabName(campaign?.name);
 
     const row = buildRowFromFormSetup(formSetup, submissionResult, {
       centerName: center?.name,

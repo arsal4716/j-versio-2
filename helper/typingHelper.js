@@ -8,7 +8,6 @@ class TypingHelper {
       fieldPause: settings.fieldPause || { min: 1000, max: 3000 }
     };
     
-    // Define typing patterns based on speed
     this.patterns = this.createPatterns(baseSpeed);
   }
 
@@ -72,14 +71,10 @@ class TypingHelper {
     for (let i = 0; i < text.length; i++) {
       const charDelay = this.getTypingDelay();
       let currentChar = text[i];
-
-      // Simulate typing mistake
       if (shouldMakeMistakes && Math.random() < 0.1) {
         const randomChar = this.getRandomChar();
         await page.type(selector, randomChar, { delay: charDelay });
-        
-        // Wait before correction
-        await new Promise(resolve => 
+                await new Promise(resolve => 
           setTimeout(resolve, this.getMistakeCorrectionDelay())
         );
         

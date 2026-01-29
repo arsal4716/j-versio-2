@@ -341,20 +341,8 @@ class SubmissionService {
 
   async checkConsentCheckbox(page, selector) {
     try {
-      const isVisible = await browserService.waitForSelectorWithTimeout(
-        page,
-        selector,
-        7000,
-      );
-      if (!isVisible) throw new Error("Consent checkbox not found");
-
-      await page.evaluate((sel) => {
-        const checkbox = document.querySelector(sel);
-        if (checkbox) {
-          checkbox.scrollIntoView({ behavior: "smooth", block: "center" });
-          if (!checkbox.checked) checkbox.click();
-        }
-      }, selector);
+      const success = await browserService.hoverAndClick(page, selector);
+      if (!success) throw new Error("Consent checkbox could not be clicked");
 
       const isChecked = await page.evaluate((sel) => {
         const checkbox = document.querySelector(sel);
@@ -395,6 +383,9 @@ class SubmissionService {
 
   async clickSubmitButton(page, submitSelector) {
     try {
+      await browserService.scrollIntoViewWithOffset(page, submitSelector);
+      await page.hover(submitSelector);
+      await page.waitForTimeout(Math.floor(Math.random() * 1000 + 500));
       await page.click(submitSelector);
       logger.debug("Form submitted");
 
@@ -410,10 +401,12 @@ class SubmissionService {
 
   async waitForProcessing(page, stayOpenTime = 9) {
     const seconds = Number(stayOpenTime);
-    const safe = Number.isFinite(seconds)
-      ? Math.min(Math.max(seconds, 3), 30)
-      : 9;
-    await new Promise((r) => setTimeout(r, safe * 1000));
+    const safeSeconds = Number.isFinite(seconds) ? Math.max(seconds, 9) : 9;
+
+    logger.debug("Waiting after submit", { stayOpenTime: safeSeconds });
+
+    await new Promise((r) => setTimeout(r, safeSeconds * 1000));
+
     return page.url();
   }
 

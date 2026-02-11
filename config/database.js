@@ -6,7 +6,7 @@ class Database {
 
   async connect() {
     try {
-      const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/botData';
+      const MONGODB_URI = process.env.MONGODB_URI;
       
       this.connection = await mongoose.connect(MONGODB_URI);
       return this.connection;

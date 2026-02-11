@@ -239,7 +239,7 @@ class SubmissionService {
 
   async navigateToLander(page, url) {
     try {
-      await page.goto(url, { waitUntil: "networkidle0", timeout: 90000 });
+      await page.goto(url, { waitUntil: "load", timeout: 90000 });
       logger.debug("Navigated to lander", { url });
     } catch (error) {
       throw new BrowserError(`Failed to navigate to lander: ${error.message}`);
@@ -331,8 +331,7 @@ class SubmissionService {
         });
 
         throw new BrowserError(
-          `Failed to fill field ${field?.label || name} (${selector}): ${
-            error.message
+          `Failed to fill field ${field?.label || name} (${selector}): ${error.message
           }`,
         );
       }

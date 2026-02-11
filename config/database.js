@@ -11,7 +11,7 @@ class Database {
       this.connection = await mongoose.connect(MONGODB_URI);
       return this.connection;
     } catch (error) {
-      console.error('MongoDB connection error:', erroar);
+      console.error('MongoDB connection error:', error);
       throw new Error('Database connection failed');
     }
   }

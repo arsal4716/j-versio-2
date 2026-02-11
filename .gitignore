@@ -3,3 +3,4 @@ node_modules
 # Ignore secret credentials
 sheets/**/*.json
 uploads/tmp/*.json
+logs

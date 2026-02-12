@@ -15,23 +15,35 @@ function getRandomWindowSize() {
 }
 
 class BrowserService {
-  constructor() {
-    // Tracks mouse position so movement starts from the last field, not (0,0)
-    this.currentMouseX = 100;
-    this.currentMouseY = 100;
-  }
-
+  /**
+   * Launches a browser with proxy and a random referrer.
+   */
   async launchBrowserWithProxy({ proxyUrl, proxyUsername, proxyPassword, referrers }) {
     const { width, height } = getRandomWindowSize();
-    
-    const browser = await puppeteer.launch({
+    let browser;
+
+    browser = await puppeteer.launch({
       executablePath: "/usr/bin/google-chrome",
       args: [
         `--proxy-server=${proxyUrl}`,
         "--no-proxy-server-bypass",
         "--no-sandbox",
         "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--ignore-certificate-errors",
+        "--disable-infobars",
+        "--disable-extensions",
+        "--hide-scrollbars",
+        "--mute-audio",
+        "--disable-background-networking",
+        "--disable-default-apps",
+        "--disable-sync",
+        "--disable-translate",
+        "--disable-plugins",
+        "--disable-software-rasterizer",
         "--disable-blink-features=AutomationControlled",
+        "--no-zygote",
         `--window-size=${width},${height}`,
       ],
       headless: "new",
@@ -48,6 +60,7 @@ class BrowserService {
     const selectedReferer = getRandomElement(refList);
 
     await page.setExtraHTTPHeaders({ referer: selectedReferer });
+
     await page.setRequestInterception(true);
     page.on("request", (request) => {
       const headers = request.headers();
@@ -55,9 +68,14 @@ class BrowserService {
       request.continue({ headers });
     });
 
+    logger.debug("Browser launched with proxy + referer", { proxyUrl, referer: selectedReferer });
+
     return { browser, page };
   }
 
+  /**
+   * Emulates a device (viewport, userAgent, touch capabilities).
+   */
   async emulateDevice(page, device) {
     if (!device) return;
     if (device.userAgent) await page.setUserAgent(device.userAgent);
@@ -70,7 +88,10 @@ class BrowserService {
     }
   }
 
-  async waitForSelectorWithTimeout(page, selector, timeoutMs = 7000) {
+  /**
+   * Waits for a selector to be visible with a timeout.
+   */
+  async waitForSelectorWithTimeout(page, selector, timeoutMs = 5000) {
     try {
       await page.waitForSelector(selector, { visible: true, timeout: timeoutMs });
       return true;
@@ -79,6 +100,9 @@ class BrowserService {
     }
   }
 
+  /**
+   * Gets the value of an input field.
+   */
   async getFieldValue(page, selector) {
     return await page.evaluate((sel) => {
       const el = document.querySelector(sel);
@@ -86,76 +110,90 @@ class BrowserService {
     }, selector);
   }
 
+  /**
+   * Smoothly scrolls the element into view with a random offset.
+   */
   async scrollIntoViewWithOffset(page, selector) {
     await page.evaluate((sel) => {
       const el = document.querySelector(sel);
       if (el) {
-        const offset = Math.floor(Math.random() * 150) + 100; // Larger offset to center element
+        const offset = Math.floor(Math.random() * 80);
         window.scrollTo({ top: el.offsetTop - offset, behavior: "smooth" });
       }
     }, selector);
-    await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 500 + 300)));
+    // Small human-like pause after scroll
+    await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 400 + 200)));
   }
 
   /**
-   * Enhanced Mouse Movement: Moves from last position to new target.
-   * Adds a slight random curve so it's not a robotic straight line.
+   * Moves the mouse cursor to the center of an element in 25 incremental steps.
+   * This simulates a visible cursor traveling to the field – only used on desktop.
    */
-  async moveMouseToElement(page, selector, steps = 20) {
+  async moveMouseToElement(page, selector, steps = 25) {
     const elementHandle = await page.$(selector);
-    if (!elementHandle) return;
-    
+    if (!elementHandle) {
+      throw new Error(`Element not found: ${selector}`);
+    }
     const box = await elementHandle.boundingBox();
-    if (!box) return;
+    if (!box) {
+      throw new Error(`Element has no bounding box: ${selector}`);
+    }
+    const targetX = box.x + box.width / 2;
+    const targetY = box.y + box.height / 2;
 
-    // Target is the center of the element with a tiny random jitter
-    const targetX = box.x + box.width / 2 + (Math.random() * 4 - 2);
-    const targetY = box.y + box.height / 2 + (Math.random() * 4 - 2);
-
-    const startX = this.currentMouseX;
-    const startY = this.currentMouseY;
+    // Get current mouse position (Puppeteer doesn't expose it, so we start from a corner)
+    const startX = 0;
+    const startY = 0;
 
     for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      // Simple linear interpolation with a tiny bit of random wobble
-      const x = startX + (targetX - startX) * t + (Math.random() * 2 - 1);
-      const y = startY + (targetY - startY) * t + (Math.random() * 2 - 1);
-      
+      const x = startX + (targetX - startX) * (i / steps);
+      const y = startY + (targetY - startY) * (i / steps);
       await page.mouse.move(x, y);
-      // Minimal delay to make the movement "visible" to recording scripts
-      if (i % 5 === 0) await new Promise(r => setTimeout(r, 10)); 
+      // No artificial delay between steps – the default 25 steps are fast but visible in playback
     }
-
-    // Save state for next move
-    this.currentMouseX = targetX;
-    this.currentMouseY = targetY;
   }
 
-  async clickElement(page, selector, deviceType) {
+  /**
+   * Clicks (or taps) an element in a human-like, device-appropriate way.
+   * - Desktop: scroll, move mouse with 25 steps, hover, then click.
+   * - Mobile/Tablet: scroll, then directly tap (no cursor movement).
+   */
+  async clickElement(page, selector, deviceType, options = {}) {
     const isDesktop = deviceType === "desktop";
-    
-    // 1. Ensure it's there
     const isVisible = await this.waitForSelectorWithTimeout(page, selector, 5000);
-    if (!isVisible) return;
+    if (!isVisible) {
+      throw new Error(`Element not visible: ${selector}`);
+    }
 
-    // 2. Scroll to it
     await this.scrollIntoViewWithOffset(page, selector);
 
     if (isDesktop) {
-      // 3. Move cursor visibly
+      // Human-like mouse movement with visible cursor trail
       await this.moveMouseToElement(page, selector);
-      
-      // 4. Human hesitation
-      await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 300 + 150)));
-      
-      // 5. Click
+      // Brief pause before clicking (as if user hesitates)
+      await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 200 + 100)));
       await page.click(selector);
     } else {
-      // Mobile just taps
+      // Touch devices: no mouse movement, just tap
       await page.tap(selector);
     }
   }
 
+  /**
+   * Legacy method kept for backward compatibility – now uses clickElement.
+   */
+  async hoverAndClick(page, selector, deviceType) {
+    try {
+      await this.clickElement(page, selector, deviceType);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Closes the browser instance.
+   */
   async closeBrowser(browser) {
     try {
       if (browser) await browser.close();

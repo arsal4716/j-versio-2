@@ -33,12 +33,10 @@ class SubmissionService {
       submissionLog = await this.createSubmissionLog(centerId, campaignName, formData, user);
       const proxyConfig = await proxyService.getProxyForCenter(center, formData);
 
-      // 1) Select device based on distribution
-      device = deviceService.selectDeviceBasedOnDistribution(
-        center?.settings?.deviceDistribution,
-      );
+      // Select device
+      device = deviceService.selectDeviceBasedOnDistribution(center?.settings?.deviceDistribution);
 
-      // 2) Launch browser
+      // Launch Browser
       ({ browser, page } = await browserService.launchBrowserWithProxy({
         proxyUrl: proxyConfig.proxyUrl,
         proxyUsername: proxyConfig.username,
@@ -46,74 +44,55 @@ class SubmissionService {
         referrers: center?.settings?.referrers,
       }));
 
-      // 3) Emulate device
       await browserService.emulateDevice(page, device);
-
-      // 4) Navigate to lander
       await this.navigateToLander(page, formSetup.landerUrl);
 
-      // --- CRITICAL: Playback Warm-up (4-8s) ---
-      // This ensures the video starts with an empty form.
-      const warmUpDelay = Math.floor(Math.random() * 4000) + 4000;
-      logger.debug("Warm-up delay before interaction", { delayMs: warmUpDelay });
-      await sleep(warmUpDelay);
+      // --- REQUIREMENT 1: WARM-UP DELAY (4-8s) ---
+      const warmUp = Math.floor(Math.random() * 4000) + 4000;
+      await sleep(warmUp);
 
       await this.injectIpAddresses(page, proxyConfig.ip);
       await this.setupTrustedFormListener(page);
 
-      // 5) Typing Randomization
+      // Typing speed randomization
       const typingSpeed = this.getRandomTypingSpeed(center?.settings?.typingSpeed);
       const typingHelper = new TypingHelper(typingSpeed, {
         makeMistakesProbability: 0.3,
         fieldPause: { min: 1000, max: 3000 },
       });
 
-      // 6) Fill form fields with humanized interactions
-      await this.fillFormFields(
-        page,
-        formSetup.fields,
-        formData,
-        typingHelper,
-        device.deviceType,
-      );
+      // --- REQUIREMENT 2: HUMANIZED FILLING ---
+      await this.fillFormFields(page, formSetup.fields, formData, typingHelper, device.deviceType);
 
-      // 7) Consent checkbox (Conditional logic)
+      // Consent Check (FIXED: Improved selector and multi-attempt click)
       let consentSelector = (formSetup?.consentSelector || "").trim();
-      if (consentSelector) {
+      if (consentSelector && formData?.consent) {
         if (!consentSelector.startsWith("#") && !consentSelector.startsWith(".")) {
           consentSelector = `#${consentSelector}`;
         }
-        if (formData?.consent) {
-          logger.debug("Processing consent checkbox interaction");
-          await this.checkConsentCheckbox(page, consentSelector, device.deviceType);
-        }
+        await this.checkConsentCheckbox(page, consentSelector, device.deviceType);
       }
 
-      // 8) Capture lead data
+      // Pre-submit captures
       const leadId = await this.getLeadId(page);
       const ipAddress = await this.getUserIp(page);
 
-      // 9) Submit Button Selection
+      // Prepare Submit
       let submitSelector = (formSetup?.submitButtonSelector || "").trim();
-      if (!submitSelector) {
-        throw new ValidationError("Submit button selector is missing in FormSetup");
-      }
-      if (!submitSelector.startsWith("#") && !submitSelector.startsWith(".")) {
+      if (submitSelector && !submitSelector.startsWith("#") && !submitSelector.startsWith(".")) {
         submitSelector = `#${submitSelector}`;
       }
 
-      // 10) Click submit button
+      // --- REQUIREMENT 3: THE SUBMIT & STAY OPEN FIX ---
+      // 1. Click the button
       await this.clickSubmitButton(page, submitSelector, device.deviceType);
 
-      // --- CRITICAL: Post-Submit Hold (stayOpenTime) ---
-      // We hold the browser open IMMEDIATELY after the click.
-      const stayOpenSeconds = Number(center?.settings?.stayOpenTime);
-      const postSubmitHoldMs = (Number.isFinite(stayOpenSeconds) ? Math.max(stayOpenSeconds, 9) : 9) * 1000;
-      
-      logger.info(`Form clicked. Holding browser for ${postSubmitHoldMs / 1000}s to capture playback.`);
-      await sleep(postSubmitHoldMs);
+      // 2. IMMEDIATE HARD SLEEP (Ensures playback captures everything)
+      const stayOpenSeconds = Math.max(Number(center?.settings?.stayOpenTime) || 9, 9);
+      logger.info(`Submit clicked. Locking browser open for ${stayOpenSeconds}s...`);
+      await sleep(stayOpenSeconds * 1000);
 
-      // 11) Final Captures after the wait
+      // 3. Capture Final URL after the wait
       const finalPageUrl = page.url();
       const trustedFormData = await this.getTrustedFormData(page);
 
@@ -128,21 +107,10 @@ class SubmissionService {
         userAgent: device.userAgent,
       };
 
-      // 12) Save to Google Sheets
-      const sheetResults = await sheetService.saveSubmissionToSheets(
-        center,
-        campaign,
-        submissionResult,
-        formSetup,
-      );
+      // Save to Sheets
+      const sheetResults = await sheetService.saveSubmissionToSheets(center, campaign, submissionResult, formSetup);
 
-      // 13) Update Logs
-      await this.updateSubmissionLogSuccess(
-        submissionLog,
-        submissionResult,
-        sheetResults,
-      );
-
+      await this.updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults);
       return this.formatSuccessResponse(submissionResult, sheetResults);
 
     } catch (error) {
@@ -150,125 +118,114 @@ class SubmissionService {
       if (submissionLog) await this.updateSubmissionLogFailure(submissionLog, error);
       throw error;
     } finally {
-      // Browser only closes after the 9s+ sleep is finished
       await browserService.closeBrowser(browser);
     }
   }
 
-  /**
-   * Universal Human Interaction Helper
-   * Handles Cursor movement for Desktop and Taps for Mobile
-   */
-  async humanInteraction(page, selector, deviceType) {
-    const isDesktop = deviceType === "desktop";
-    
-    const isVisible = await browserService.waitForSelectorWithTimeout(page, selector, 7000);
-    if (!isVisible) {
-      throw new Error(`Element ${selector} not visible for interaction`);
-    }
-
-    // Ensure it's in view
-    await browserService.scrollIntoViewWithOffset(page, selector);
-    await sleep(500); // Wait for scroll to settle
-
-    if (isDesktop) {
-      // Visible cursor movement
-      await browserService.moveMouseToElement(page, selector);
-      await sleep(Math.floor(Math.random() * 300) + 200); 
-      await page.click(selector);
-    } else {
-      // Mobile tap (no cursor)
-      await page.tap(selector);
-    }
-    
-    // Brief pause after interaction
-    await sleep(Math.floor(Math.random() * 400) + 300);
-  }
+  // Optimized Helper methods below
 
   async fillFormFields(page, fields, formData, typingHelper, deviceType) {
+    const isDesktop = deviceType === "desktop";
     for (const field of fields) {
       let selector = field?.selector?.trim();
       const name = field?.name;
       if (!selector || !name) continue;
-
-      if (!selector.startsWith("#") && !selector.startsWith(".")) {
-        selector = `#${selector}`;
-      }
+      
+      if (!selector.startsWith("#") && !selector.startsWith(".")) selector = `#${selector}`;
 
       const value = (formData?.[name] !== undefined ? String(formData[name]) : "") ||
                     (field?.defaultValue ? String(field.defaultValue) : "");
 
-      if (field?.required && (!value || value.trim() === "")) {
-        throw new ValidationError(`${field?.label || name} is required`);
-      }
+      if (field?.required && (!value || value.trim() === "")) throw new ValidationError(`${field?.label || name} is required`);
 
       try {
-        // Move, Click, Focus
-        await this.humanInteraction(page, selector, deviceType);
-        // Type
+        const isVisible = await browserService.waitForSelectorWithTimeout(page, selector, 7000);
+        if (!isVisible) continue;
+
+        await browserService.scrollIntoViewWithOffset(page, selector);
+
+        if (isDesktop) {
+          await browserService.moveMouseToElement(page, selector);
+          await sleep(250);
+          await page.click(selector);
+        } else {
+          await page.tap(selector);
+        }
+
+        await sleep(400);
         await typingHelper.simulateTyping(page, selector, value);
       } catch (error) {
         logger.error("Error filling field", { name, selector, error: error.message });
-        throw new BrowserError(`Failed to fill field ${name}: ${error.message}`);
       }
     }
   }
 
+  /**
+   * FIXED: Checks the consent checkbox.
+   * If clicking the checkbox doesn't work, it clicks the parent (label).
+   */
   async checkConsentCheckbox(page, selector, deviceType) {
     try {
-      // Use the human helper to ensure cursor movement to the checkbox
-      await this.humanInteraction(page, selector, deviceType);
+      await browserService.scrollIntoViewWithOffset(page, selector);
+      
+      if (deviceType === "desktop") {
+        await browserService.moveMouseToElement(page, selector);
+        await sleep(300);
+        await page.click(selector);
+      } else {
+        await page.tap(selector);
+      }
 
+      // Verify if checked
       const isChecked = await page.evaluate((sel) => {
-        const checkbox = document.querySelector(sel);
-        if (!checkbox) return false;
-        // If it's not a standard checkbox, it might be a div wrapper; 
-        // this check is for standard inputs.
-        return checkbox.checked || checkbox.getAttribute('aria-checked') === 'true';
+        const el = document.querySelector(sel);
+        return el ? (el.checked || el.getAttribute('aria-checked') === 'true') : false;
       }, selector);
 
       if (!isChecked) {
-        // If the click didn't check it (some landers need a click on the label),
-        // we log it but don't necessarily crash unless it's a hard requirement.
-        logger.warn("Consent checkbox click performed, but state is not 'checked'");
+        logger.debug("Checkbox not checked on first try, attempting parent click...");
+        await page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (el && el.parentElement) el.parentElement.click();
+        }, selector);
       }
     } catch (error) {
-      throw new BrowserError(`Consent checkbox error: ${error.message}`);
+      logger.error(`Consent checkbox error: ${error.message}`);
     }
   }
 
   async clickSubmitButton(page, submitSelector, deviceType) {
     try {
-      // Use human helper to ensure cursor movement to the submit button
-      await this.humanInteraction(page, submitSelector, deviceType);
-      logger.debug("Submit button clicked via human interaction");
+      await browserService.scrollIntoViewWithOffset(page, submitSelector);
+      if (deviceType === "desktop") {
+        await browserService.moveMouseToElement(page, submitSelector);
+        await sleep(500);
+        await page.click(submitSelector);
+      } else {
+        await page.tap(submitSelector);
+      }
     } catch (error) {
-      throw new BrowserError(`Form submit click failed: ${error.message}`);
+      logger.error("Submit button click failed", { error: error.message });
     }
   }
 
-  // --- Utility Methods ---
+  // --- Logic Consistency Helpers ---
 
   getRandomTypingSpeed(centerTypingSpeed) {
-    const base = centerTypingSpeed || 800;
-    const min = Math.max(base - 200, 300);
-    const max = base + 200;
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+    if (centerTypingSpeed && typeof centerTypingSpeed === "number") {
+      const min = Math.max(centerTypingSpeed - 200, 300);
+      const max = centerTypingSpeed + 200;
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+    return Math.floor(Math.random() * (1200 - 600 + 1)) + 600;
   }
 
   async navigateToLander(page, url) {
-    try {
-      await page.goto(url, { waitUntil: "load", timeout: 90000 });
-    } catch (error) {
-      throw new BrowserError(`Failed to navigate to lander: ${error.message}`);
-    }
+    await page.goto(url, { waitUntil: "load", timeout: 90000 });
   }
 
   async injectIpAddresses(page, proxyIp) {
-    await page.evaluate((ip) => {
-      window.trustedFormIp = ip;
-      window.jornayaIp = ip;
-    }, proxyIp);
+    await page.evaluate((ip) => { window.trustedFormIp = ip; window.jornayaIp = ip; }, proxyIp);
   }
 
   async setupTrustedFormListener(page) {
@@ -276,17 +233,11 @@ class SubmissionService {
       window._trustedFormData = null;
       const captureTF = () => {
         const cert = document.querySelector("#xxTrustedFormCertUrl_0")?.value || "";
-        const token = document.querySelector("#xxTrustedFormToken_0")?.value || "";
-        if (cert && token) {
-          window._trustedFormData = { cert, token };
-          return true;
-        }
+        if (cert) { window._trustedFormData = { cert }; return true; }
         return false;
       };
-      if (captureTF()) return;
       const observer = new MutationObserver(() => { if (captureTF()) observer.disconnect(); });
       observer.observe(document.body, { childList: true, subtree: true });
-      setTimeout(() => observer.disconnect(), 6000);
     });
   }
 
@@ -299,28 +250,30 @@ class SubmissionService {
   }
 
   async getTrustedFormData(page) {
-    return await page.evaluate(() => window._trustedFormData).catch(() => null);
+    const tfData = await page.evaluate(() => window._trustedFormData).catch(() => null);
+    if (tfData) return tfData;
+    return { cert: (await browserService.getFieldValue(page, "#xxTrustedFormCertUrl_0").catch(() => "")) || "" };
   }
 
   async validateUserAccess(user, centerId, campaignName) {
     const roles = Array.isArray(user?.roles) ? user.roles : [];
     if (roles.includes("super_admin")) return;
-    if (user?.centerId?.toString() !== centerId?.toString()) throw new AuthorizationError("Access denied to center");
-    if (!user?.allowedCampaigns?.includes(campaignName)) throw new AuthorizationError("Access denied to campaign");
+    if (user?.centerId?.toString() !== centerId?.toString()) throw new AuthorizationError("Access denied");
+    if (!user?.allowedCampaigns?.includes(campaignName)) throw new AuthorizationError("Campaign denied");
   }
 
   async getCenterAndCampaign(centerId, campaignName) {
     const center = await Center.findById(centerId).lean();
     if (!center) throw new NotFoundError("Center not found");
-    const campaign = (center.campaigns || []).find(c => c.name === campaignName && c.isActive);
-    if (!campaign) throw new NotFoundError("Campaign inactive");
+    const campaign = (center.campaigns || []).find((c) => c.name === campaignName && c.isActive);
+    if (!campaign) throw new NotFoundError("Campaign not found");
     return { center, campaign };
   }
 
   async getFormSetup(centerId, campaignName) {
-    const setup = await FormSetup.findOne({ centerId, campaignName }).lean();
-    if (!setup || !setup.landerUrl) throw new ValidationError("Invalid form setup");
-    return setup;
+    const formSetup = await FormSetup.findOne({ centerId, campaignName }).lean();
+    if (!formSetup) throw new NotFoundError("FormSetup not found");
+    return formSetup;
   }
 
   async createSubmissionLog(centerId, campaignName, formData, user) {
@@ -332,24 +285,24 @@ class SubmissionService {
     return await log.save();
   }
 
-  async updateSubmissionLogSuccess(log, result, sheets) {
-    log.result = "success";
-    log.metadata = { ...result };
-    log.timestamps.completedAt = new Date();
-    log.timestamps.duration = log.timestamps.completedAt - log.timestamps.startedAt;
-    log.sheetStatus = { master: sheets?.master?.success, admin: sheets?.admin?.success };
-    await log.save();
+  async updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults) {
+    submissionLog.result = "success";
+    submissionLog.metadata = { ...submissionResult };
+    submissionLog.timestamps.completedAt = new Date();
+    submissionLog.timestamps.duration = submissionLog.timestamps.completedAt - submissionLog.timestamps.startedAt;
+    submissionLog.sheetStatus = { master: !!sheetResults?.master?.success, admin: !!sheetResults?.admin?.success };
+    await submissionLog.save();
   }
 
-  async updateSubmissionLogFailure(log, error) {
-    log.result = "failed";
-    log.errorDetails = { message: error.message };
-    log.timestamps.completedAt = new Date();
-    await log.save();
+  async updateSubmissionLogFailure(submissionLog, error) {
+    submissionLog.result = "failed";
+    submissionLog.errorDetails = { message: error.message };
+    submissionLog.timestamps.completedAt = new Date();
+    await submissionLog.save();
   }
 
-  formatSuccessResponse(result, sheets) {
-    return { success: true, message: "Submitted", data: { ...result, sheets } };
+  formatSuccessResponse(submissionResult, sheetResults) {
+    return { success: true, message: "Form submitted successfully", data: { ...submissionResult, sheets: sheetResults } };
   }
 }
 

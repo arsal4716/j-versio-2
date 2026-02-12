@@ -18,10 +18,14 @@ import {
 import logger from "../utils/logger.js";
 
 class SubmissionService {
+  /**
+   * Main entry point for form submission.
+   */
   async submitForm(centerId, campaignName, formData, user) {
     let submissionLog = null;
     let browser = null;
     let page = null;
+    let device = null; // store device info for later use
 
     try {
       await this.validateUserAccess(user, centerId, campaignName);
@@ -44,10 +48,12 @@ class SubmissionService {
         formData,
       );
 
-      const device = deviceService.selectDeviceBasedOnDistribution(
+      // 1) Select device based on distribution
+      device = deviceService.selectDeviceBasedOnDistribution(
         center?.settings?.deviceDistribution,
       );
 
+      // 2) Launch browser with proxy
       ({ browser, page } = await browserService.launchBrowserWithProxy({
         proxyUrl: proxyConfig.proxyUrl,
         proxyUsername: proxyConfig.username,
@@ -55,24 +61,35 @@ class SubmissionService {
         referrers: center?.settings?.referrers,
       }));
 
+      // 3) Emulate device (viewport, userAgent, touch)
       await browserService.emulateDevice(page, device);
 
+      // 4) Navigate to lander
       await this.navigateToLander(page, formSetup.landerUrl);
+
+      // --- CRITICAL: Playback Warm-up (4-8s) ---
+      const warmUpDelay = Math.floor(Math.random() * 4000) + 4000; // 4000-8000ms
+      logger.debug("Warm-up delay before interaction", { delayMs: warmUpDelay });
+      await new Promise((r) => setTimeout(r, warmUpDelay));
+      // --- End warm-up ---
 
       await this.injectIpAddresses(page, proxyConfig.ip);
 
-      const typingHelper = new TypingHelper(
-        center?.settings?.typingSpeed || 800,
-        {
-          makeMistakesProbability: 0.3,
-          fieldPause: { min: 1000, max: 3000 },
-        },
-      );
+      // 5) Set up TrustedForm listener (as early as possible)
+      await this.setupTrustedFormListener(page);
 
-      await this.fillFormFields(page, formSetup.fields, formData, typingHelper);
+      // 6) Create TypingHelper with RANDOM typing speed per submission
+      const typingSpeed = this.getRandomTypingSpeed(center?.settings?.typingSpeed);
+      const typingHelper = new TypingHelper(typingSpeed, {
+        makeMistakesProbability: 0.3,
+        fieldPause: { min: 1000, max: 3000 },
+      });
 
+      // 7) Fill form fields with humanized interactions
+      await this.fillFormFields(page, formSetup.fields, formData, typingHelper, device.deviceType);
+
+      // 8) Consent checkbox (if any)
       let consentSelector = (formSetup?.consentSelector || "").trim();
-
       if (
         consentSelector &&
         !consentSelector.startsWith("#") &&
@@ -80,34 +97,37 @@ class SubmissionService {
       ) {
         consentSelector = `#${consentSelector}`;
       }
-
       if (consentSelector && formData?.consent) {
-        await this.checkConsentCheckbox(page, consentSelector);
+        await this.checkConsentCheckbox(page, consentSelector, device.deviceType);
       }
 
+      // 9) Capture lead ID and IP from hidden fields
       const leadId = await this.getLeadId(page);
       const ipAddress = await this.getUserIp(page);
-
       const trustedFormData = await this.getTrustedFormData(page);
 
+      // 10) Prepare submit button selector
       let submitSelector = (formSetup?.submitButtonSelector || "").trim();
       if (!submitSelector) {
-        throw new ValidationError(
-          "Submit button selector is missing in FormSetup",
-        );
+        throw new ValidationError("Submit button selector is missing in FormSetup");
       }
-
       if (!submitSelector.startsWith("#") && !submitSelector.startsWith(".")) {
         submitSelector = `#${submitSelector}`;
       }
 
-      await this.clickSubmitButton(page, submitSelector);
+      // 11) Click submit button (device-aware)
+      await this.clickSubmitButton(page, submitSelector, device.deviceType);
 
-      const pageUrl = await this.waitForProcessing(
-        page,
-        center?.settings?.stayOpenTime,
-      );
+      // 12) --- STAY OPEN FIX: Hard sleep for stayOpenTime seconds ---
+      const stayOpenSeconds = Number(center?.settings?.stayOpenTime) || 9;
+      const safeStayOpen = Number.isFinite(stayOpenSeconds) ? Math.max(stayOpenSeconds, 9) : 9;
+      logger.debug("Hard sleep after submit", { seconds: safeStayOpen });
+      await new Promise((r) => setTimeout(r, safeStayOpen * 1000));
 
+      // 13) Capture final page URL
+      const pageUrl = page.url();
+
+      // 14) Assemble submission result
       const submissionResult = {
         ...formData,
         leadId,
@@ -119,7 +139,7 @@ class SubmissionService {
         userAgent: device.userAgent,
       };
 
-      // 14) Save to sheets (dynamic per center + campaign)
+      // 15) Save to Google Sheets (this happens AFTER the 9s wait)
       const sheetResults = await sheetService.saveSubmissionToSheets(
         center,
         campaign,
@@ -144,6 +164,7 @@ class SubmissionService {
         );
       }
 
+      // 16) Update submission log with success
       await this.updateSubmissionLogSuccess(
         submissionLog,
         submissionResult,
@@ -172,9 +193,29 @@ class SubmissionService {
 
       throw error;
     } finally {
+      // Browser is closed ONLY after everything (9s wait + sheet save) is done
       await browserService.closeBrowser(browser);
     }
   }
+
+  /**
+   * Generates a random typing speed (ms per character) for each submission.
+   * If center.settings.typingSpeed is provided, it's used as a baseline ±200ms.
+   * Otherwise a default range of 600–1200ms is used.
+   */
+  getRandomTypingSpeed(centerTypingSpeed) {
+    if (centerTypingSpeed && typeof centerTypingSpeed === "number") {
+      const min = Math.max(centerTypingSpeed - 200, 300); // ensure not too fast
+      const max = centerTypingSpeed + 200;
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+    // Default range
+    return Math.floor(Math.random() * (1200 - 600 + 1)) + 600;
+  }
+
+  // ------------------------------------------------------------
+  // Existing helper methods (some modified for device awareness)
+  // ------------------------------------------------------------
 
   validateUserAccess(user, centerId, campaignName) {
     const roles = Array.isArray(user?.roles) ? user.roles : [];
@@ -282,7 +323,14 @@ class SubmissionService {
     });
   }
 
-  async fillFormFields(page, fields, formData, typingHelper) {
+  /**
+   * Fills form fields with device-appropriate humanized behavior.
+   * Sequence for DESKTOP: scroll → move mouse (25 steps) → click → wait 300-700ms → type with random per-keystroke delay.
+   * Sequence for MOBILE/TABLET: scroll → tap → wait 300-700ms → type.
+   */
+  async fillFormFields(page, fields, formData, typingHelper, deviceType) {
+    const isDesktop = deviceType === "desktop";
+
     for (const field of fields) {
       let selector = field?.selector;
       const name = field?.name;
@@ -309,19 +357,35 @@ class SubmissionService {
         );
 
         if (!isVisible) {
-          logger.warn("Field not visible, skipping", {
-            name,
-            selector,
-          });
+          logger.warn("Field not visible, skipping", { name, selector });
           continue;
         }
 
+        // 1) Scroll into view (human-like)
+        await browserService.scrollIntoViewWithOffset(page, selector);
+
+        // 2) Click / tap the field
+        if (isDesktop) {
+          await browserService.moveMouseToElement(page, selector);
+          // Very short pause before click
+          await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 200 + 100)));
+          await page.click(selector);
+        } else {
+          await page.tap(selector);
+        }
+
+        // 3) Human pause between click and typing (300-700ms)
+        const pauseBeforeTyping = Math.floor(Math.random() * 400) + 300; // 300-700ms
+        await new Promise((r) => setTimeout(r, pauseBeforeTyping));
+
+        // 4) Type with random per-keystroke delays
         await typingHelper.simulateTyping(page, selector, value);
 
         logger.debug("Field filled", {
           name,
           selector,
           valueLength: value.length,
+          deviceType,
         });
       } catch (error) {
         logger.error("Error filling field", {
@@ -331,24 +395,28 @@ class SubmissionService {
         });
 
         throw new BrowserError(
-          `Failed to fill field ${field?.label || name} (${selector}): ${error.message
-          }`,
+          `Failed to fill field ${field?.label || name} (${selector}): ${error.message}`,
         );
       }
     }
   }
 
-  async checkConsentCheckbox(page, selector) {
+  /**
+   * Checks the consent checkbox using device-appropriate click.
+   */
+  async checkConsentCheckbox(page, selector, deviceType) {
     try {
-      const success = await browserService.hoverAndClick(page, selector);
-      if (!success) throw new Error("Consent checkbox could not be clicked");
+      await browserService.clickElement(page, selector, deviceType);
 
+      // Verify it's checked
       const isChecked = await page.evaluate((sel) => {
         const checkbox = document.querySelector(sel);
         return checkbox ? checkbox.checked : false;
       }, selector);
 
-      if (!isChecked) throw new Error("Consent checkbox could not be checked");
+      if (!isChecked) {
+        throw new Error("Consent checkbox could not be checked");
+      }
     } catch (error) {
       throw new BrowserError(`Consent checkbox error: ${error.message}`);
     }
@@ -380,42 +448,33 @@ class SubmissionService {
     };
   }
 
-  async clickSubmitButton(page, submitSelector) {
+  /**
+   * Clicks the submit button with device-appropriate behavior.
+   * IMPORTANT: waitForNavigation has been REMOVED – the "stay open" is handled by a hard sleep in the main flow.
+   */
+  async clickSubmitButton(page, submitSelector, deviceType) {
     try {
-      await browserService.scrollIntoViewWithOffset(page, submitSelector);
-      await page.hover(submitSelector);
-      await new Promise((r) =>
-        setTimeout(r, Math.floor(Math.random() * 400 + 200)),
-      );
-      await page.click(submitSelector);
-      logger.debug("Form submitted");
-
-      await page
-        .waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 })
-        .catch(() =>
-          logger.debug("Navigation timeout after submit, continuing..."),
-        );
+      await browserService.clickElement(page, submitSelector, deviceType);
+      logger.debug("Form submitted (submit button clicked)");
     } catch (error) {
       throw new BrowserError(`Form submit click failed: ${error.message}`);
     }
   }
 
+  /**
+   * NOTE: This method is no longer used for the stay‑open wait.
+   * It is kept for backward compatibility or alternative flows.
+   */
   async waitForProcessing(page, stayOpenTime = 9) {
     const seconds = Number(stayOpenTime);
     const safeSeconds = Number.isFinite(seconds) ? Math.max(seconds, 9) : 9;
 
-    logger.debug("Waiting after submit", { stayOpenTime: safeSeconds });
-
+    logger.debug("Waiting after submit (legacy method)", { stayOpenTime: safeSeconds });
     await new Promise((r) => setTimeout(r, safeSeconds * 1000));
-
     return page.url();
   }
 
-  async updateSubmissionLogSuccess(
-    submissionLog,
-    submissionResult,
-    sheetResults,
-  ) {
+  async updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults) {
     const completedAt = new Date();
     const duration = completedAt - submissionLog.timestamps.startedAt;
 

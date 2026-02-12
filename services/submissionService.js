@@ -17,6 +17,8 @@ import {
 
 import logger from "../utils/logger.js";
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 class SubmissionService {
   /**
    * Main entry point for form submission.
@@ -25,7 +27,10 @@ class SubmissionService {
     let submissionLog = null;
     let browser = null;
     let page = null;
-    let device = null; // store device info for later use
+    let device = null;
+
+    let submitClickedAt = null;
+    let postSubmitHoldSeconds = 9;
 
     try {
       await this.validateUserAccess(user, centerId, campaignName);
@@ -43,10 +48,7 @@ class SubmissionService {
         user,
       );
 
-      const proxyConfig = await proxyService.getProxyForCenter(
-        center,
-        formData,
-      );
+      const proxyConfig = await proxyService.getProxyForCenter(center, formData);
 
       // 1) Select device based on distribution
       device = deviceService.selectDeviceBasedOnDistribution(
@@ -70,7 +72,7 @@ class SubmissionService {
       // --- CRITICAL: Playback Warm-up (4-8s) ---
       const warmUpDelay = Math.floor(Math.random() * 4000) + 4000; // 4000-8000ms
       logger.debug("Warm-up delay before interaction", { delayMs: warmUpDelay });
-      await new Promise((r) => setTimeout(r, warmUpDelay));
+      await sleep(warmUpDelay);
       // --- End warm-up ---
 
       await this.injectIpAddresses(page, proxyConfig.ip);
@@ -86,7 +88,13 @@ class SubmissionService {
       });
 
       // 7) Fill form fields with humanized interactions
-      await this.fillFormFields(page, formSetup.fields, formData, typingHelper, device.deviceType);
+      await this.fillFormFields(
+        page,
+        formSetup.fields,
+        formData,
+        typingHelper,
+        device.deviceType,
+      );
 
       // 8) Consent checkbox (if any)
       let consentSelector = (formSetup?.consentSelector || "").trim();
@@ -101,7 +109,7 @@ class SubmissionService {
         await this.checkConsentCheckbox(page, consentSelector, device.deviceType);
       }
 
-      // 9) Capture lead ID and IP from hidden fields
+      // 9) Capture lead ID and IP from hidden fields (never throw)
       const leadId = await this.getLeadId(page);
       const ipAddress = await this.getUserIp(page);
       const trustedFormData = await this.getTrustedFormData(page);
@@ -115,19 +123,16 @@ class SubmissionService {
         submitSelector = `#${submitSelector}`;
       }
 
+      const stayOpenSeconds = Number(center?.settings?.stayOpenTime);
+      postSubmitHoldSeconds =
+        Number.isFinite(stayOpenSeconds) ? Math.max(stayOpenSeconds, 9) : 9;
+
       // 11) Click submit button (device-aware)
       await this.clickSubmitButton(page, submitSelector, device.deviceType);
+      submitClickedAt = Date.now();
+      const pageUrl = page?.url?.() || "";
 
-      // 12) --- STAY OPEN FIX: Hard sleep for stayOpenTime seconds ---
-      const stayOpenSeconds = Number(center?.settings?.stayOpenTime) || 9;
-      const safeStayOpen = Number.isFinite(stayOpenSeconds) ? Math.max(stayOpenSeconds, 9) : 9;
-      logger.debug("Hard sleep after submit", { seconds: safeStayOpen });
-      await new Promise((r) => setTimeout(r, safeStayOpen * 1000));
-
-      // 13) Capture final page URL
-      const pageUrl = page.url();
-
-      // 14) Assemble submission result
+      // 13) Assemble submission result
       const submissionResult = {
         ...formData,
         leadId,
@@ -139,7 +144,7 @@ class SubmissionService {
         userAgent: device.userAgent,
       };
 
-      // 15) Save to Google Sheets (this happens AFTER the 9s wait)
+      // 14) Save to Google Sheets (happens after click; browser still stays open due to finally hold)
       const sheetResults = await sheetService.saveSubmissionToSheets(
         center,
         campaign,
@@ -159,12 +164,10 @@ class SubmissionService {
         if (masterErr) msgParts.push(`Center sheet: ${masterErr}`);
         if (adminErr) msgParts.push(`Admin sheet: ${adminErr}`);
 
-        throw new ValidationError(
-          msgParts.join(" | ") || "Google Sheets save failed",
-        );
+        throw new ValidationError(msgParts.join(" | ") || "Google Sheets save failed");
       }
 
-      // 16) Update submission log with success
+      // 15) Update submission log with success
       await this.updateSubmissionLogSuccess(
         submissionLog,
         submissionResult,
@@ -193,29 +196,37 @@ class SubmissionService {
 
       throw error;
     } finally {
-      // Browser is closed ONLY after everything (9s wait + sheet save) is done
+      try {
+        if (browser && submitClickedAt) {
+          const elapsedMs = Date.now() - submitClickedAt;
+          const targetMs = postSubmitHoldSeconds * 1000;
+          const remainingMs = targetMs - elapsedMs;
+
+          if (remainingMs > 0) {
+            logger.debug("Guaranteed post-submit hold (playback capture)", {
+              postSubmitHoldSeconds,
+              elapsedMs,
+              remainingMs,
+            });
+            await sleep(remainingMs);
+          }
+        }
+      } catch (e) {
+        logger.warn("Post-submit hold failed", { error: e?.message });
+      }
+
       await browserService.closeBrowser(browser);
     }
   }
 
-  /**
-   * Generates a random typing speed (ms per character) for each submission.
-   * If center.settings.typingSpeed is provided, it's used as a baseline ±200ms.
-   * Otherwise a default range of 600–1200ms is used.
-   */
   getRandomTypingSpeed(centerTypingSpeed) {
     if (centerTypingSpeed && typeof centerTypingSpeed === "number") {
-      const min = Math.max(centerTypingSpeed - 200, 300); // ensure not too fast
+      const min = Math.max(centerTypingSpeed - 200, 300);
       const max = centerTypingSpeed + 200;
       return Math.floor(Math.random() * (max - min + 1)) + min;
     }
-    // Default range
     return Math.floor(Math.random() * (1200 - 600 + 1)) + 600;
   }
-
-  // ------------------------------------------------------------
-  // Existing helper methods (some modified for device awareness)
-  // ------------------------------------------------------------
 
   validateUserAccess(user, centerId, campaignName) {
     const roles = Array.isArray(user?.roles) ? user.roles : [];
@@ -227,9 +238,7 @@ class SubmissionService {
     }
 
     if (!user?.allowedCampaigns?.includes(campaignName)) {
-      throw new AuthorizationError(
-        "You do not have permission for this campaign",
-      );
+      throw new AuthorizationError("You do not have permission for this campaign");
     }
   }
 
@@ -246,12 +255,8 @@ class SubmissionService {
   }
 
   async getFormSetup(centerId, campaignName) {
-    const formSetup = await FormSetup.findOne({
-      centerId,
-      campaignName,
-    }).lean();
-    if (!formSetup)
-      throw new NotFoundError("Form configuration not found for this campaign");
+    const formSetup = await FormSetup.findOne({ centerId, campaignName }).lean();
+    if (!formSetup) throw new NotFoundError("Form configuration not found for this campaign");
 
     if (!Array.isArray(formSetup.fields) || formSetup.fields.length === 0) {
       throw new ValidationError("No form fields configured for this campaign");
@@ -280,7 +285,7 @@ class SubmissionService {
 
   async navigateToLander(page, url) {
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
+      await page.goto(url, { waitUntil: "load", timeout: 90000 });
       logger.debug("Navigated to lander", { url });
     } catch (error) {
       throw new BrowserError(`Failed to navigate to lander: ${error.message}`);
@@ -299,12 +304,9 @@ class SubmissionService {
       window._trustedFormData = null;
 
       const captureTF = () => {
-        const cert =
-          document.querySelector("#xxTrustedFormCertUrl_0")?.value || "";
-        const token =
-          document.querySelector("#xxTrustedFormToken_0")?.value || "";
-        const ping =
-          document.querySelector("#xxTrustedFormPingUrl_0")?.value || "";
+        const cert = document.querySelector("#xxTrustedFormCertUrl_0")?.value || "";
+        const token = document.querySelector("#xxTrustedFormToken_0")?.value || "";
+        const ping = document.querySelector("#xxTrustedFormPingUrl_0")?.value || "";
         if (cert && token && ping) {
           window._trustedFormData = { cert, token, ping };
           return true;
@@ -323,11 +325,6 @@ class SubmissionService {
     });
   }
 
-  /**
-   * Fills form fields with device-appropriate humanized behavior.
-   * Sequence for DESKTOP: scroll → move mouse (25 steps) → click → wait 300-700ms → type with random per-keystroke delay.
-   * Sequence for MOBILE/TABLET: scroll → tap → wait 300-700ms → type.
-   */
   async fillFormFields(page, fields, formData, typingHelper, deviceType) {
     const isDesktop = deviceType === "desktop";
 
@@ -350,35 +347,24 @@ class SubmissionService {
       }
 
       try {
-        const isVisible = await browserService.waitForSelectorWithTimeout(
-          page,
-          selector,
-          7000,
-        );
-
+        const isVisible = await browserService.waitForSelectorWithTimeout(page, selector, 7000);
         if (!isVisible) {
           logger.warn("Field not visible, skipping", { name, selector });
           continue;
         }
 
-        // 1) Scroll into view (human-like)
         await browserService.scrollIntoViewWithOffset(page, selector);
 
-        // 2) Click / tap the field
         if (isDesktop) {
           await browserService.moveMouseToElement(page, selector);
-          // Very short pause before click
-          await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 200 + 100)));
+          await sleep(Math.floor(Math.random() * 200 + 100));
           await page.click(selector);
         } else {
           await page.tap(selector);
         }
 
-        // 3) Human pause between click and typing (300-700ms)
-        const pauseBeforeTyping = Math.floor(Math.random() * 400) + 300; // 300-700ms
-        await new Promise((r) => setTimeout(r, pauseBeforeTyping));
+        await sleep(Math.floor(Math.random() * 400) + 300);
 
-        // 4) Type with random per-keystroke delays
         await typingHelper.simulateTyping(page, selector, value);
 
         logger.debug("Field filled", {
@@ -388,12 +374,7 @@ class SubmissionService {
           deviceType,
         });
       } catch (error) {
-        logger.error("Error filling field", {
-          name,
-          selector,
-          error: error.message,
-        });
-
+        logger.error("Error filling field", { name, selector, error: error.message });
         throw new BrowserError(
           `Failed to fill field ${field?.label || name} (${selector}): ${error.message}`,
         );
@@ -408,7 +389,6 @@ class SubmissionService {
     try {
       await browserService.clickElement(page, selector, deviceType);
 
-      // Verify it's checked
       const isChecked = await page.evaluate((sel) => {
         const checkbox = document.querySelector(sel);
         return checkbox ? checkbox.checked : false;
@@ -423,34 +403,37 @@ class SubmissionService {
   }
 
   async getLeadId(page) {
-    return await browserService.getFieldValue(page, "#leadid_token");
+    try {
+      const v = await browserService.getFieldValue(page, "#leadid_token");
+      return (v || "").trim();
+    } catch {
+      return "";
+    }
   }
 
   async getUserIp(page) {
-    return await browserService.getFieldValue(page, "#user_ip");
+    try {
+      const v = await browserService.getFieldValue(page, "#user_ip");
+      return (v || "").trim();
+    } catch {
+      return "";
+    }
   }
 
   async getTrustedFormData(page) {
-    const tfData = await page.evaluate(() => window._trustedFormData);
-
+    const tfData = await page.evaluate(() => window._trustedFormData).catch(() => null);
     if (tfData) return tfData;
 
     return {
-      cert:
-        (await browserService.getFieldValue(page, "#xxTrustedFormCertUrl_0")) ||
-        "",
-      token:
-        (await browserService.getFieldValue(page, "#xxTrustedFormToken_0")) ||
-        "",
-      ping:
-        (await browserService.getFieldValue(page, "#xxTrustedFormPingUrl_0")) ||
-        "",
+      cert: (await browserService.getFieldValue(page, "#xxTrustedFormCertUrl_0").catch(() => "")) || "",
+      token: (await browserService.getFieldValue(page, "#xxTrustedFormToken_0").catch(() => "")) || "",
+      ping: (await browserService.getFieldValue(page, "#xxTrustedFormPingUrl_0").catch(() => "")) || "",
     };
   }
 
   /**
    * Clicks the submit button with device-appropriate behavior.
-   * IMPORTANT: waitForNavigation has been REMOVED – the "stay open" is handled by a hard sleep in the main flow.
+   * IMPORTANT: no waitForNavigation here.
    */
   async clickSubmitButton(page, submitSelector, deviceType) {
     try {
@@ -462,15 +445,14 @@ class SubmissionService {
   }
 
   /**
-   * NOTE: This method is no longer used for the stay‑open wait.
-   * It is kept for backward compatibility or alternative flows.
+   * NOTE: legacy method; not used for the stay-open guarantee.
    */
   async waitForProcessing(page, stayOpenTime = 9) {
     const seconds = Number(stayOpenTime);
     const safeSeconds = Number.isFinite(seconds) ? Math.max(seconds, 9) : 9;
 
     logger.debug("Waiting after submit (legacy method)", { stayOpenTime: safeSeconds });
-    await new Promise((r) => setTimeout(r, safeSeconds * 1000));
+    await sleep(safeSeconds * 1000);
     return page.url();
   }
 
@@ -479,8 +461,11 @@ class SubmissionService {
     const duration = completedAt - submissionLog.timestamps.startedAt;
 
     submissionLog.result = "success";
+
+    const leadId = (submissionResult.leadId || "").trim();
+
     submissionLog.metadata = {
-      leadId: submissionResult.leadId,
+      ...(leadId ? { leadId } : {}),
       trustedForm: submissionResult.trustedForm,
       ipAddress: submissionResult.ipAddress,
       proxyIp: submissionResult.proxyIp,

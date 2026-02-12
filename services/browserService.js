@@ -20,7 +20,7 @@ class BrowserService {
     let browser;
 
     browser = await puppeteer.launch({
-      executablePath: "/usr/bin/google-chrome-stable",
+      executablePath: "/usr/bin/google-chrome",
       args: [
         `--proxy-server=${proxyUrl}`,
         "--no-proxy-server-bypass",
@@ -102,11 +102,11 @@ class BrowserService {
     await page.evaluate((sel) => {
       const el = document.querySelector(sel);
       if (el) {
-        const offset = Math.floor(Math.random() * 80); 
+        const offset = Math.floor(Math.random() * 80);
         window.scrollTo({ top: el.offsetTop - offset, behavior: "smooth" });
       }
     }, selector);
-  await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 400 + 200)));
+    await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 400 + 200)));
   }
 
   async hoverAndClick(page, selector) {
@@ -117,7 +117,7 @@ class BrowserService {
 
     await page.mouse.move(Math.random() * 300, Math.random() * 300);
     await page.hover(selector);
-  await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 400 + 200)));
+    await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 400 + 200)));
     await page.click(selector);
     return true;
   }

@@ -26,13 +26,27 @@ class SubmissionService {
     try {
       await this.validateUserAccess(user, centerId, campaignName);
 
-      const { center, campaign } = await this.getCenterAndCampaign(centerId, campaignName);
+      const { center, campaign } = await this.getCenterAndCampaign(
+        centerId,
+        campaignName,
+      );
       const formSetup = await this.getFormSetup(centerId, campaignName);
 
-      submissionLog = await this.createSubmissionLog(centerId, campaignName, formData, user);
+      submissionLog = await this.createSubmissionLog(
+        centerId,
+        campaignName,
+        formData,
+        user,
+      );
 
-      const proxyConfig = await proxyService.getProxyForCenter(center, formData);
-      const device = deviceService.selectDeviceBasedOnDistribution(center?.settings?.deviceDistribution);
+      const proxyConfig = await proxyService.getProxyForCenter(
+        center,
+        formData,
+      );
+
+      const device = deviceService.selectDeviceBasedOnDistribution(
+        center?.settings?.deviceDistribution,
+      );
 
       ({ browser, page } = await browserService.launchBrowserWithProxy({
         proxyUrl: proxyConfig.proxyUrl,
@@ -42,53 +56,57 @@ class SubmissionService {
       }));
 
       await browserService.emulateDevice(page, device);
+
       await this.navigateToLander(page, formSetup.landerUrl);
-      await browserService.disableAutoCompleteOnInputs(page);
+
       await this.injectIpAddresses(page, proxyConfig.ip);
 
-      const typingHelper = new TypingHelper(center?.settings?.typingSpeed || 800, {
-        makeMistakesProbability: 0.3,
-        fieldPause: { min: 1000, max: 3000 },
-      });
+      const typingHelper = new TypingHelper(
+        center?.settings?.typingSpeed || 800,
+        {
+          makeMistakesProbability: 0.3,
+          fieldPause: { min: 1000, max: 3000 },
+        },
+      );
 
-      const readinessSelectors = (formSetup?.fields || [])
-        .map((f) => (f?.selector || "").trim())
-        .filter(Boolean)
-        .slice(0, 3)
-        .map((s) => (s.startsWith("#") || s.startsWith(".")) ? s : `#${s}`);
-
-      await browserService.stabilizeBeforeFilling(page, {
-        formSelectors: readinessSelectors,
-        minWaitMs: 5000,
-        maxWaitMs: 8000,
-      });
-
-      await this.fillFormFields(page, formSetup.fields, formData, typingHelper, device.deviceType);
+      await this.fillFormFields(page, formSetup.fields, formData, typingHelper);
 
       let consentSelector = (formSetup?.consentSelector || "").trim();
-      if (consentSelector && !consentSelector.startsWith("#") && !consentSelector.startsWith(".")) {
+
+      if (
+        consentSelector &&
+        !consentSelector.startsWith("#") &&
+        !consentSelector.startsWith(".")
+      ) {
         consentSelector = `#${consentSelector}`;
       }
+
       if (consentSelector && formData?.consent) {
         await this.checkConsentCheckbox(page, consentSelector);
       }
+
       const leadId = await this.getLeadId(page);
       const ipAddress = await this.getUserIp(page);
 
+      const trustedFormData = await this.getTrustedFormData(page);
+
       let submitSelector = (formSetup?.submitButtonSelector || "").trim();
-      if (!submitSelector) throw new ValidationError("Submit button selector is missing");
+      if (!submitSelector) {
+        throw new ValidationError(
+          "Submit button selector is missing in FormSetup",
+        );
+      }
+
       if (!submitSelector.startsWith("#") && !submitSelector.startsWith(".")) {
         submitSelector = `#${submitSelector}`;
       }
-      await this.clickSubmitButton(page, submitSelector, device.deviceType);
 
+      await this.clickSubmitButton(page, submitSelector);
 
-      const finalPageUrl = await this.waitForProcessing(
+      const pageUrl = await this.waitForProcessing(
         page,
-        center?.settings?.stayOpenTime || 9
+        center?.settings?.stayOpenTime,
       );
-
-      const trustedFormData = await this.getTrustedFormData(page);
 
       const submissionResult = {
         ...formData,
@@ -96,11 +114,12 @@ class SubmissionService {
         trustedForm: trustedFormData?.cert || "",
         ipAddress,
         proxyIp: proxyConfig.ip,
-        pageUrl: finalPageUrl,
+        pageUrl,
         deviceType: device.deviceType,
         userAgent: device.userAgent,
       };
 
+      // 14) Save to sheets (dynamic per center + campaign)
       const sheetResults = await sheetService.saveSubmissionToSheets(
         center,
         campaign,
@@ -109,16 +128,48 @@ class SubmissionService {
       );
 
       if (!sheetResults?.master?.success || !sheetResults?.admin?.success) {
-        throw new ValidationError("Google Sheets save failed");
+        const masterErr = sheetResults?.master?.success
+          ? null
+          : sheetResults?.master?.error;
+        const adminErr = sheetResults?.admin?.success
+          ? null
+          : sheetResults?.admin?.error;
+
+        const msgParts = [];
+        if (masterErr) msgParts.push(`Center sheet: ${masterErr}`);
+        if (adminErr) msgParts.push(`Admin sheet: ${adminErr}`);
+
+        throw new ValidationError(
+          msgParts.join(" | ") || "Google Sheets save failed",
+        );
       }
 
-      await this.updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults);
+      await this.updateSubmissionLogSuccess(
+        submissionLog,
+        submissionResult,
+        sheetResults,
+      );
+
+      logger.info("Form submission completed successfully", {
+        centerId,
+        campaignName,
+        leadId,
+        duration: submissionLog?.timestamps?.duration,
+      });
 
       return this.formatSuccessResponse(submissionResult, sheetResults);
-
     } catch (error) {
-      logger.error("Form submission failed", { error: error.message });
-      if (submissionLog) await this.updateSubmissionLogFailure(submissionLog, error);
+      logger.error("Form submission failed", {
+        centerId,
+        campaignName,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      if (submissionLog) {
+        await this.updateSubmissionLogFailure(submissionLog, error);
+      }
+
       throw error;
     } finally {
       await browserService.closeBrowser(browser);
@@ -195,7 +246,6 @@ class SubmissionService {
     }
   }
 
-
   async injectIpAddresses(page, proxyIp) {
     await page.evaluate((ip) => {
       window.trustedFormIp = ip;
@@ -232,7 +282,7 @@ class SubmissionService {
     });
   }
 
-  async fillFormFields(page, fields, formData, typingHelper, deviceType = "desktop") {
+  async fillFormFields(page, fields, formData, typingHelper) {
     for (const field of fields) {
       let selector = field?.selector;
       const name = field?.name;
@@ -252,44 +302,45 @@ class SubmissionService {
       }
 
       try {
-        const isVisible = await browserService.waitForSelectorWithTimeout(page, selector, 9000);
+        const isVisible = await browserService.waitForSelectorWithTimeout(
+          page,
+          selector,
+          7000,
+        );
 
         if (!isVisible) {
-          logger.warn("Field not visible, skipping", { name, selector });
+          logger.warn("Field not visible, skipping", {
+            name,
+            selector,
+          });
           continue;
         }
 
-        // Focus in a device-appropriate way (tap on mobile/tablet = no cursor trails)
-        await browserService.smartFocus(page, selector, { deviceType });
-
-        // Give TF playback time to show the focus event before typing starts
-        await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 250 + 250)));
-
-        // Fix: "Playback shows first few characters already filled"
-        // Clear any prefilled value (autofill, cached value, browser restoration)
-        await browserService.clearFieldHard(page, selector);
-
-        // Now type (your existing helper stays intact)
         await typingHelper.simulateTyping(page, selector, value);
 
-        logger.debug("Field filled", { name, selector, valueLength: value.length });
-
-        // Small random pause between fields to look human
-        await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 500 + 300)));
+        logger.debug("Field filled", {
+          name,
+          selector,
+          valueLength: value.length,
+        });
       } catch (error) {
-        logger.error("Error filling field", { name, selector, error: error.message });
+        logger.error("Error filling field", {
+          name,
+          selector,
+          error: error.message,
+        });
 
         throw new BrowserError(
-          `Failed to fill field ${field?.label || name} (${selector}): ${error.message}`,
+          `Failed to fill field ${field?.label || name} (${selector}): ${error.message
+          }`,
         );
       }
     }
   }
 
-
-  async checkConsentCheckbox(page, selector, deviceType = "desktop") {
+  async checkConsentCheckbox(page, selector) {
     try {
-      const success = await browserService.smartClick(page, selector, { deviceType });
+      const success = await browserService.hoverAndClick(page, selector);
       if (!success) throw new Error("Consent checkbox could not be clicked");
 
       const isChecked = await page.evaluate((sel) => {
@@ -329,36 +380,37 @@ class SubmissionService {
     };
   }
 
-  async clickSubmitButton(page, submitSelector, deviceType = "desktop") {
+  async clickSubmitButton(page, submitSelector) {
     try {
       await browserService.scrollIntoViewWithOffset(page, submitSelector);
+      await page.hover(submitSelector);
+      await new Promise((r) =>
+        setTimeout(r, Math.floor(Math.random() * 400 + 200)),
+      );
+      await page.click(submitSelector);
+      logger.debug("Form submitted");
 
-      // Simple click/tap
-      const clicked = await browserService.smartClick(page, submitSelector, { deviceType });
-      if (!clicked) throw new Error("Submit button not clickable");
-
-      logger.debug("Submit button clicked. Proceeding to hard-wait window.");
-
-      await new Promise(r => setTimeout(r, 1500));
-
+      await page
+        .waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 })
+        .catch(() =>
+          logger.debug("Navigation timeout after submit, continuing..."),
+        );
     } catch (error) {
-      throw new BrowserError(`Click failed: ${error.message}`);
+      throw new BrowserError(`Form submit click failed: ${error.message}`);
     }
   }
 
   async waitForProcessing(page, stayOpenTime = 9) {
     const seconds = Number(stayOpenTime);
-    const safeMs = (Number.isFinite(seconds) && seconds > 0) ? seconds * 1000 : 9000;
+    const safeSeconds = Number.isFinite(seconds) ? Math.max(seconds, 9) : 9;
 
-    logger.info(`Browser safety window: Staying open for ${safeMs / 1000}s`);
-    await new Promise((r) => setTimeout(r, safeMs));
+    logger.debug("Waiting after submit", { stayOpenTime: safeSeconds });
 
-    try {
-      return page.url();
-    } catch (e) {
-      return "redirected_or_closed";
-    }
+    await new Promise((r) => setTimeout(r, safeSeconds * 1000));
+
+    return page.url();
   }
+
   async updateSubmissionLogSuccess(
     submissionLog,
     submissionResult,

@@ -64,7 +64,6 @@ const submissionLogSchema = new mongoose.Schema({
 // Indexes for faster queries
 submissionLogSchema.index({ centerId: 1, campaignName: 1, 'timestamps.startedAt': -1 });
 submissionLogSchema.index({ userId: 1, result: 1 });
-submissionLogSchema.index({ 'metadata.leadId': 1 });
 
 // Virtual for duration
 submissionLogSchema.virtual('durationMs').get(function() {

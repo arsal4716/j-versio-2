@@ -40,102 +40,205 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 class SubmissionService {
 
-async submitForm(centerId, campaignName, formData, user) {
+  async submitForm(centerId, campaignName, formData, user) {
+
     let submissionLog = null;
+
     let browser = null;
+
     let page = null;
+
     let device = null;
 
+
+
     try {
+
       await this.validateUserAccess(user, centerId, campaignName);
+
       const { center, campaign } = await this.getCenterAndCampaign(centerId, campaignName);
+
       const formSetup = await this.getFormSetup(centerId, campaignName);
 
+
+
       submissionLog = await this.createSubmissionLog(centerId, campaignName, formData, user);
+
       const proxyConfig = await proxyService.getProxyForCenter(center, formData);
+
+
+
+      // Select device
+
       device = deviceService.selectDeviceBasedOnDistribution(center?.settings?.deviceDistribution);
 
+
+
+      // Launch Browser
+
       ({ browser, page } = await browserService.launchBrowserWithProxy({
+
         proxyUrl: proxyConfig.proxyUrl,
+
         proxyUsername: proxyConfig.username,
+
         proxyPassword: proxyConfig.password,
+
         referrers: center?.settings?.referrers,
+
       }));
 
+
+
       await browserService.emulateDevice(page, device);
+
       await this.navigateToLander(page, formSetup.landerUrl);
 
-      // --- WARM-UP (4-8s) ---
-      await sleep(Math.floor(Math.random() * 4000) + 4000);
+
+
+      // --- REQUIREMENT 1: WARM-UP DELAY (4-8s) ---
+
+      const warmUp = Math.floor(Math.random() * 4000) + 4000;
+
+      await sleep(warmUp);
+
+
 
       await this.injectIpAddresses(page, proxyConfig.ip);
+
       await this.setupTrustedFormListener(page);
 
+
+
+      // Typing speed randomization
+
       const typingSpeed = this.getRandomTypingSpeed(center?.settings?.typingSpeed);
+
       const typingHelper = new TypingHelper(typingSpeed, {
+
         makeMistakesProbability: 0.3,
+
         fieldPause: { min: 1000, max: 3000 },
+
       });
 
-      // --- FILLING ---
+
+
+      // --- REQUIREMENT 2: HUMANIZED FILLING ---
+
       await this.fillFormFields(page, formSetup.fields, formData, typingHelper, device.deviceType);
 
-      // Consent
+
+
+      // Consent Check
+
       let consentSelector = (formSetup?.consentSelector || "").trim();
-      if (consentSelector && formData?.consent) {
-        if (!consentSelector.startsWith("#") && !consentSelector.startsWith(".")) consentSelector = `#${consentSelector}`;
-        // Wrapped in try/catch so failure here doesn't stop the submission
-        try { await this.checkConsentCheckbox(page, consentSelector, device.deviceType); } catch (e) { logger.warn("Consent failed"); }
+
+      if (consentSelector && !consentSelector.startsWith("#") && !consentSelector.startsWith(".")) {
+
+        consentSelector = `#${consentSelector}`;
+
       }
+
+      if (consentSelector && formData?.consent) {
+
+        await this.checkConsentCheckbox(page, consentSelector, device.deviceType);
+
+      }
+
+
 
       // Pre-submit captures
+
       const leadId = await this.getLeadId(page);
+
       const ipAddress = await this.getUserIp(page);
 
-      // --- SUBMIT LOGIC ---
+      
+
+      // Prepare Submit
+
       let submitSelector = (formSetup?.submitButtonSelector || "").trim();
-      if (submitSelector && !submitSelector.startsWith("#") && !submitSelector.startsWith(".")) {
+
+      if (!submitSelector.startsWith("#") && !submitSelector.startsWith(".")) {
+
         submitSelector = `#${submitSelector}`;
+
       }
 
-      // If button not found within 5 seconds, it will catch and move to the 'finally' block
-      await browserService.waitForSelectorWithTimeout(page, submitSelector, 5000);
+
+
+      // --- REQUIREMENT 3: THE SUBMIT & STAY OPEN FIX ---
+
+      // 1. Click the button
+
       await this.clickSubmitButton(page, submitSelector, device.deviceType);
 
-      // --- HARD STAY-OPEN ---
+      
+
+      // 2. IMMEDIATE HARD SLEEP (Ensures playback captures everything)
+
       const stayOpenSeconds = Math.max(Number(center?.settings?.stayOpenTime) || 9, 9);
-      logger.info(`Submit clicked. Locking browser for ${stayOpenSeconds}s...`);
-      await sleep(stayOpenSeconds * 1000);
+
+      logger.info(`Submit clicked. Locking browser open for ${stayOpenSeconds}s...`);
+
+      await sleep(stayOpenSeconds * 1000); 
+
+
+
+      // 3. Capture Final URL after the 9s wait
 
       const finalPageUrl = page.url();
+
       const trustedFormData = await this.getTrustedFormData(page);
 
+
+
       const submissionResult = {
+
         ...formData,
+
         leadId,
+
         trustedForm: trustedFormData?.cert || "",
+
         ipAddress,
+
         proxyIp: proxyConfig.ip,
+
         pageUrl: finalPageUrl,
+
         deviceType: device.deviceType,
+
         userAgent: device.userAgent,
+
       };
 
+
+
+      // Save to Sheets (Happens while browser is still open)
+
       const sheetResults = await sheetService.saveSubmissionToSheets(center, campaign, submissionResult, formSetup);
+
+
+
       await this.updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults);
-      
+
       return this.formatSuccessResponse(submissionResult, sheetResults);
 
+
+
     } catch (error) {
+
       logger.error("Form submission failed", { error: error.message });
+
       if (submissionLog) await this.updateSubmissionLogFailure(submissionLog, error);
+
       throw error;
     } finally {
-      if (browser) {
-        await browserService.closeBrowser(browser);
-        logger.info("Browser closed hard.");
-      }
+      await browserService.closeBrowser(browser);
     }
+
   }
   getRandomTypingSpeed(centerTypingSpeed) {
     if (centerTypingSpeed && typeof centerTypingSpeed === "number") {
@@ -303,18 +406,20 @@ async submitForm(centerId, campaignName, formData, user) {
   /**
    * Checks the consent checkbox using device-appropriate click.
    */
-async checkConsentCheckbox(page, selector, deviceType) {
+  async checkConsentCheckbox(page, selector, deviceType) {
     try {
-      await browserService.scrollIntoViewWithOffset(page, selector);
-      if (deviceType === "desktop") {
-        await browserService.moveMouseToElement(page, selector);
-        await sleep(300);
-        await page.click(selector);
-      } else {
-        await page.tap(selector);
+      await browserService.clickElement(page, selector, deviceType);
+
+      const isChecked = await page.evaluate((sel) => {
+        const checkbox = document.querySelector(sel);
+        return checkbox ? checkbox.checked : false;
+      }, selector);
+
+      if (!isChecked) {
+        throw new Error("Consent checkbox could not be checked");
       }
     } catch (error) {
-      logger.warn(`Non-critical checkbox error: ${error.message}`);
+      throw new BrowserError(`Consent checkbox error: ${error.message}`);
     }
   }
 
@@ -351,7 +456,7 @@ async checkConsentCheckbox(page, selector, deviceType) {
    * Clicks the submit button with device-appropriate behavior.
    * IMPORTANT: no waitForNavigation here.
    */
-
+  
   async clickSubmitButton(page, submitSelector, deviceType) {
 
     await browserService.scrollIntoViewWithOffset(page, submitSelector);

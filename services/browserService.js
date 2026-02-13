@@ -8,54 +8,50 @@ function getRandomElement(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-
 function randFloat(min, max) {
   return Math.random() * (max - min) + min;
 }
-
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
-}
-
-// ---- Mouse state is per Page (so movement paths vary naturally) ----
-const mouseStateByPage = new WeakMap(); // page -> { x, y }
-
-function getMouseState(page) {
-  if (!mouseStateByPage.has(page)) {
-    // Start from a random on-screen point to avoid identical "from corner" trails
-    mouseStateByPage.set(page, { x: randInt(40, 220), y: randInt(60, 240) });
-  }
-  return mouseStateByPage.get(page);
-}
-
-function setMouseState(page, x, y) {
-  mouseStateByPage.set(page, { x, y });
-}
-
-// Cubic Bezier point
-function cubicBezier(t, p0, p1, p2, p3) {
-  const u = 1 - t;
-  const tt = t * t;
-  const uu = u * u;
-  const uuu = uu * u;
-  const ttt = tt * t;
-
-  const x = uuu * p0.x + 3 * uu * t * p1.x + 3 * u * tt * p2.x + ttt * p3.x;
-  const y = uuu * p0.y + 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt * p3.y;
-  return { x, y };
-}
-
-async function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 function getRandomWindowSize() {
   const width = randInt(1024, 1920);
   const height = randInt(768, 1080);
   return { width, height };
+}
+
+/**
+ * Keep per-page mouse position so every move is unique and NOT always from (0,0).
+ */
+const mouseStateByPage = new WeakMap(); // page -> { x, y }
+
+function getMouseState(page) {
+  if (!mouseStateByPage.has(page)) {
+    mouseStateByPage.set(page, { x: randInt(40, 220), y: randInt(60, 240) });
+  }
+  return mouseStateByPage.get(page);
+}
+function setMouseState(page, x, y) {
+  mouseStateByPage.set(page, { x, y });
+}
+
+function cubicBezierPoint(t, p0, p1, p2, p3) {
+  const u = 1 - t;
+  const tt = t * t;
+  const uu = u * u;
+  const uuu = uu * u;
+  const ttt = tt * t;
+
+  return {
+    x: uuu * p0.x + 3 * uu * t * p1.x + 3 * u * tt * p2.x + ttt * p3.x,
+    y: uuu * p0.y + 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt * p3.y,
+  };
 }
 
 class BrowserService {
@@ -95,7 +91,7 @@ class BrowserService {
 
     const page = await browser.newPage();
 
-    // Initialize mouse state for this page (unique per session)
+    // Seed unique starting cursor point per page/session
     setMouseState(page, randInt(40, 220), randInt(60, 240));
 
     if (proxyUsername && proxyPassword) {
@@ -157,8 +153,8 @@ class BrowserService {
   }
 
   /**
-   * Smoothly scrolls the element into view with a random offset.
-   * Improved to center-ish the element in viewport so playback clearly shows it.
+   * Improved scroll: tries to bring target near middle for playback visibility.
+   * (Still fast; does not add heavy delays)
    */
   async scrollIntoViewWithOffset(page, selector) {
     await page.evaluate((sel) => {
@@ -166,291 +162,179 @@ class BrowserService {
       if (!el) return;
 
       const r = el.getBoundingClientRect();
-      const viewportH = window.innerHeight || 800;
+      const vh = window.innerHeight || 800;
 
-      // Aim to bring element near middle with slight randomness
+      // Bring element to ~40% from top with slight randomness
       const targetY =
-        window.scrollY + r.top - viewportH * (0.35 + Math.random() * 0.15) - Math.floor(Math.random() * 60);
+        window.scrollY + r.top - vh * (0.35 + Math.random() * 0.15) - Math.floor(Math.random() * 50);
 
       window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
     }, selector);
 
-    // Human-like pause after scroll
-    await sleep(randInt(220, 650));
+    await sleep(randInt(160, 420));
   }
 
   /**
-   * Computes a "human" target point inside element bounds.
-   * Avoids exact center every time (important for checkbox realism).
+   * Pick a random realistic point inside the element (not always center).
+   * For checkbox: a bit more spread, for submit: slightly more centered.
    */
   async getHumanPointInElement(page, selector, purpose = "generic") {
-    const handle = await page.$(selector);
-    if (!handle) throw new Error(`Element not found: ${selector}`);
-    const box = await handle.boundingBox();
+    const elementHandle = await page.$(selector);
+    if (!elementHandle) throw new Error(`Element not found: ${selector}`);
+
+    const box = await elementHandle.boundingBox();
     if (!box) throw new Error(`Element has no bounding box: ${selector}`);
 
-    // Different click zones per purpose
-    let minXFactor = 0.30,
-      maxXFactor = 0.70,
-      minYFactor = 0.30,
-      maxYFactor = 0.70;
+    let minX = 0.30, maxX = 0.70, minY = 0.30, maxY = 0.70;
 
     if (purpose === "checkbox") {
-      // Click inside checkbox bounds but not always center
-      minXFactor = 0.22;
-      maxXFactor = 0.78;
-      minYFactor = 0.22;
-      maxYFactor = 0.78;
+      minX = 0.18; maxX = 0.82;
+      minY = 0.18; maxY = 0.82;
     } else if (purpose === "submit") {
-      // Slightly favor center but still random
-      minXFactor = 0.35;
-      maxXFactor = 0.65;
-      minYFactor = 0.35;
-      maxYFactor = 0.65;
+      minX = 0.35; maxX = 0.65;
+      minY = 0.35; maxY = 0.65;
     }
 
-    const x = box.x + box.width * randFloat(minXFactor, maxXFactor);
-    const y = box.y + box.height * randFloat(minYFactor, maxYFactor);
+    const x = box.x + box.width * randFloat(minX, maxX);
+    const y = box.y + box.height * randFloat(minY, maxY);
 
-    // Clamp to viewport bounds (safety)
     const vp = page.viewport() || { width: 1366, height: 768 };
+
     return {
-      x: clamp(x, 1, vp.width - 2),
-      y: clamp(y, 1, vp.height - 2),
+      x: clamp(x, 2, vp.width - 3),
+      y: clamp(y, 2, vp.height - 3),
       box,
     };
   }
 
   /**
-   * Human-like mouse movement using cubic Bezier curves, variable speed,
-   * pauses, and micro-adjustments. Ensures uniqueness across submissions.
+   * Human-like Bezier mouse move with variable speed + tiny pauses.
+   * UNIQUE path each time due to random control points & jitter.
    */
-  async humanMouseMove(page, toX, toY, options = {}) {
+  async humanMouseMove(page, toX, toY) {
     const state = getMouseState(page);
     const fromX = state.x;
     const fromY = state.y;
 
     const distance = Math.hypot(toX - fromX, toY - fromY);
+    const steps = clamp(Math.floor(distance / randFloat(9, 15)) + randInt(-2, 6), 18, 70);
 
-    // Steps scale with distance + randomness (prevents identical paths)
-    const baseSteps = clamp(Math.floor(distance / randFloat(8.5, 14.5)), 18, 70);
-    const steps = baseSteps + randInt(-3, 6);
-
-    // Control points: random curvature (unique each move)
     const p0 = { x: fromX, y: fromY };
     const p3 = { x: toX, y: toY };
 
-    const curveScale = clamp(distance * randFloat(0.18, 0.38), 30, 420);
     const angle = Math.atan2(toY - fromY, toX - fromX);
-
-    // Perpendicular offset (both directions possible)
     const perp = angle + (Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2);
+    const curve = clamp(distance * randFloat(0.18, 0.38), 25, 420);
 
     const p1 = {
-      x: fromX + Math.cos(angle) * curveScale * randFloat(0.30, 0.55) + Math.cos(perp) * randFloat(-curveScale, curveScale),
-      y: fromY + Math.sin(angle) * curveScale * randFloat(0.30, 0.55) + Math.sin(perp) * randFloat(-curveScale, curveScale),
+      x: fromX + Math.cos(angle) * curve * randFloat(0.30, 0.55) + Math.cos(perp) * randFloat(-curve, curve),
+      y: fromY + Math.sin(angle) * curve * randFloat(0.30, 0.55) + Math.sin(perp) * randFloat(-curve, curve),
     };
 
     const p2 = {
-      x: toX - Math.cos(angle) * curveScale * randFloat(0.30, 0.55) + Math.cos(perp) * randFloat(-curveScale, curveScale),
-      y: toY - Math.sin(angle) * curveScale * randFloat(0.30, 0.55) + Math.sin(perp) * randFloat(-curveScale, curveScale),
+      x: toX - Math.cos(angle) * curve * randFloat(0.30, 0.55) + Math.cos(perp) * randFloat(-curve, curve),
+      y: toY - Math.sin(angle) * curve * randFloat(0.30, 0.55) + Math.sin(perp) * randFloat(-curve, curve),
     };
 
-    // Variable speed: delays per step (gives visible, human timing)
-    const minDelay = options.minDelayMs ?? randInt(2, 9);
-    const maxDelay = options.maxDelayMs ?? randInt(9, 22);
+    const minDelay = randInt(1, 6);
+    const maxDelay = randInt(6, 16);
 
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
 
-      // Ease-in-out so speed varies naturally
+      // ease-in-out speed profile
       const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
-      const pt = cubicBezier(eased, p0, p1, p2, p3);
+      const pt = cubicBezierPoint(eased, p0, p1, p2, p3);
 
-      // Small jitter (micro hand tremor), reduced near target
-      const jitterScale = (1 - t) * randFloat(0.6, 1.6);
-      const jx = randFloat(-jitterScale, jitterScale);
-      const jy = randFloat(-jitterScale, jitterScale);
+      // jitter reduces as it approaches target
+      const jitter = (1 - t) * randFloat(0.4, 1.4);
+      await page.mouse.move(pt.x + randFloat(-jitter, jitter), pt.y + randFloat(-jitter, jitter));
 
-      await page.mouse.move(pt.x + jx, pt.y + jy);
-
-      // Random micro-pauses along path
-      if (Math.random() < 0.06) {
-        await sleep(randInt(18, 75));
-      } else {
-        await sleep(randInt(minDelay, maxDelay));
-      }
+      if (Math.random() < 0.06) await sleep(randInt(14, 55));
+      else await sleep(randInt(minDelay, maxDelay));
     }
 
     setMouseState(page, toX, toY);
   }
 
   /**
-   * Micro-adjust around a target point (for checkbox + clicks)
+   * Micro-adjust before clicking (tiny small moves)
    */
   async microAdjust(page, x, y) {
     const n = randInt(2, 4);
     for (let i = 0; i < n; i++) {
-      const dx = randFloat(-3.2, 3.2);
-      const dy = randFloat(-3.2, 3.2);
-      await page.mouse.move(x + dx, y + dy);
-      await sleep(randInt(18, 60));
+      await page.mouse.move(x + randFloat(-3.0, 3.0), y + randFloat(-3.0, 3.0));
+      await sleep(randInt(12, 45));
     }
     await page.mouse.move(x, y);
-    await sleep(randInt(40, 120));
+    await sleep(randInt(20, 90));
     setMouseState(page, x, y);
   }
 
   /**
-   * Moves mouse to element using human mouse move (desktop only).
-   * Kept name for compatibility with existing calls.
+   * Backward compatible function name used by your code.
+   * Now uses unique Bezier movement + offset target point.
    */
   async moveMouseToElement(page, selector) {
     const { x, y } = await this.getHumanPointInElement(page, selector, "generic");
-    await this.humanMouseMove(page, x, y, {
-      minDelayMs: randInt(2, 9),
-      maxDelayMs: randInt(10, 26),
-    });
+    await this.humanMouseMove(page, x, y);
   }
 
   /**
    * Clicks (or taps) an element in a human-like, device-appropriate way.
-   * - Desktop: scroll, human-move (Bezier), hover delay, micro-adjust, click at offset.
-   * - Mobile/Tablet: scroll, then tap (no cursor movement).
+   * Desktop:
+   * - scroll
+   * - move mouse (Bezier unique path)
+   * - hover delay (random)
+   * - micro-adjust
+   * - mouse down/up (real click)
+   *
+   * Mobile/Tablet:
+   * - scroll
+   * - tap
    */
   async clickElement(page, selector, deviceType, options = {}) {
     const isDesktop = deviceType === "desktop";
     const purpose = options.purpose || "generic";
+    const timeoutMs = options.timeoutMs || 6000;
 
-    const isVisible = await this.waitForSelectorWithTimeout(page, selector, options.timeoutMs || 6000);
+    const isVisible = await this.waitForSelectorWithTimeout(page, selector, timeoutMs);
     if (!isVisible) throw new Error(`Element not visible: ${selector}`);
 
     await this.scrollIntoViewWithOffset(page, selector);
 
     if (!isDesktop) {
-      // Touch devices: no visible cursor movement
       await page.tap(selector);
-      // Small natural pause after tap
-      await sleep(randInt(120, 420));
+      await sleep(randInt(100, 350));
       return;
     }
 
     const { x, y } = await this.getHumanPointInElement(page, selector, purpose);
 
-    // Human move with unique curve + speed variation
-    await this.humanMouseMove(page, x, y, {
-      minDelayMs: randInt(2, 10),
-      maxDelayMs: randInt(10, 28),
-    });
+    await this.humanMouseMove(page, x, y);
 
-    // Hover delay (checkbox requirement: 200–800ms random)
+    // Hover delay
     const hoverDelay =
       typeof options.hoverDelayMs === "number"
         ? options.hoverDelayMs
         : purpose === "checkbox"
           ? randInt(200, 800)
-          : randInt(120, 480);
+          : randInt(120, 420);
 
     await sleep(hoverDelay);
 
-    // Micro adjust before click (looks real in playback)
+    // Micro adjust before click
     if (options.microAdjust !== false) {
       await this.microAdjust(page, x, y);
     }
 
-    // Real mouse click at coordinates (not always page.click center)
+    // Real click (mouse down/up) at that point
     await page.mouse.down();
-    await sleep(randInt(35, 95));
+    await sleep(randInt(25, 90));
     await page.mouse.up();
 
-    await sleep(randInt(140, 520));
-  }
-
-  /**
-   * Submit click + light post-click waiting for ANY of:
-   * - navigation
-   * - network idle
-   * - url change
-   * - small DOM change window
-   *
-   * This is designed for 100+ sites (redirect, same page, AJAX).
-   * It does NOT replace your enforced 9s delay (that’s handled in SubmissionService).
-   */
-  async clickSubmitAndWait(page, submitSelector, deviceType) {
-    const initialUrl = page.url();
-
-    // Prepare a lightweight DOM change sentinel (safe, no refactor)
-    const domSentinel = await page.evaluate(() => {
-      try {
-        const b = document.body;
-        return b ? (b.innerText || "").length : 0;
-      } catch {
-        return 0;
-      }
-    });
-
-    // Click human-like
-    await this.clickElement(page, submitSelector, deviceType, {
-      purpose: "submit",
-      hoverDelayMs: randInt(180, 650),
-      microAdjust: true,
-      timeoutMs: 8000,
-    });
-
-    // Post-click waits (best effort, never throws)
-    const waiters = [];
-
-    // 1) Navigation (redirect / thank-you page)
-    waiters.push(
-      page
-        .waitForNavigation({ waitUntil: "networkidle2", timeout: 8000 })
-        .catch(() => null),
-    );
-
-    // 2) Network idle (AJAX submit)
-    if (typeof page.waitForNetworkIdle === "function") {
-      waiters.push(page.waitForNetworkIdle({ idleTime: 600, timeout: 8000 }).catch(() => null));
-    }
-
-    // 3) URL change without full navigation
-    waiters.push(
-      page
-        .waitForFunction(() => location.href !== (window.___u0 || ""), { timeout: 8000 })
-        .catch(() => null),
-    );
-
-    // seed url in page context (safe)
-    await page.evaluate((u) => {
-      window.___u0 = u;
-    }, initialUrl);
-
-    // 4) DOM text length changes (some same-page submissions update DOM)
-    waiters.push(
-      page
-        .waitForFunction(
-          (len0) => {
-            try {
-              const b = document.body;
-              const len1 = b ? (b.innerText || "").length : 0;
-              return Math.abs(len1 - len0) > 40;
-            } catch {
-              return false;
-            }
-          },
-          { timeout: 8000 },
-          domSentinel,
-        )
-        .catch(() => null),
-    );
-
-    // 5) Always allow a short minimum settle time
-    waiters.push(sleep(randInt(700, 1400)));
-
-    await Promise.race(waiters);
-
-    // small settle after whichever finishes first
-    await sleep(randInt(250, 650));
+    await sleep(randInt(120, 420));
   }
 
   /**

@@ -18,14 +18,9 @@ import {
 import logger from "../utils/logger.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function randInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 function makeFallbackLeadId() {
-  // DB-safe unique fallback, does NOT affect real leadIds
-  // Avoids Mongo duplicate key error when leadId is "" for multiple docs
   const ts = Date.now().toString(36);
   const r = Math.random().toString(36).slice(2, 10);
   return `fallback_${ts}_${r}`;
@@ -79,7 +74,8 @@ class SubmissionService {
       // --- REQUIREMENT 2: HUMANIZED FILLING ---
       await this.fillFormFields(page, formSetup.fields, formData, typingHelper, device.deviceType);
 
-      // Consent Check (IMPORTANT: if consentSelector empty => no checkbox on lander => skip)
+      // Consent Check
+      // IMPORTANT: if consentSelector empty => no checkbox => skip
       let consentSelector = (formSetup?.consentSelector || "").trim();
       if (consentSelector && !consentSelector.startsWith("#") && !consentSelector.startsWith(".")) {
         consentSelector = `#${consentSelector}`;
@@ -99,15 +95,16 @@ class SubmissionService {
         submitSelector = `#${submitSelector}`;
       }
 
-      // --- REQUIREMENT 3: SUBMIT RELIABILITY + POST CLICK WAIT + STAY OPEN ---
+      // --- REQUIREMENT 3: SUBMIT TRACKER + HARD STAY OPEN ---
+      // 1) Click submit (NO navigation/network idle waits)
       await this.clickSubmitButton(page, submitSelector, device.deviceType);
 
-      // Enforce stay-open (>= 9s OR center.settings.stayOpenTime if higher)
+      // 2) Start stayOpen timer IMMEDIATELY after click
       const stayOpenSeconds = Math.max(Number(center?.settings?.stayOpenTime) || 9, 9);
       logger.info(`Submit clicked. Locking browser open for ${stayOpenSeconds}s...`);
       await sleep(stayOpenSeconds * 1000);
 
-      // Capture Final URL after stay-open window
+      // 3) Capture after stayOpen window
       const finalPageUrl = page.url();
       const trustedFormData = await this.getTrustedFormData(page);
 
@@ -122,11 +119,15 @@ class SubmissionService {
         userAgent: device.userAgent,
       };
 
-      // Save to Sheets (browser still open during the enforced window above)
-      const sheetResults = await sheetService.saveSubmissionToSheets(center, campaign, submissionResult, formSetup);
+      // Save to Sheets (after stayOpen; keep your behavior)
+      const sheetResults = await sheetService.saveSubmissionToSheets(
+        center,
+        campaign,
+        submissionResult,
+        formSetup,
+      );
 
       await this.updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults);
-
       return this.formatSuccessResponse(submissionResult, sheetResults);
     } catch (error) {
       logger.error("Form submission failed", { error: error.message });
@@ -271,26 +272,23 @@ class SubmissionService {
           continue;
         }
 
-        // Improved scroll-to-view (center-ish) for better playback
         await browserService.scrollIntoViewWithOffset(page, selector);
 
         if (isDesktop) {
-          // Human mouse movement: unique curves, variable speed, micro-adjust
           await browserService.moveMouseToElement(page, selector);
-          await sleep(randInt(120, 320));
+          await sleep(randInt(90, 220));
+
           await browserService.clickElement(page, selector, deviceType, {
             purpose: "generic",
-            hoverDelayMs: randInt(90, 260),
+            hoverDelayMs: randInt(80, 220),
             microAdjust: true,
             timeoutMs: 7000,
           });
         } else {
           await page.tap(selector);
-          await sleep(randInt(120, 380));
         }
 
-        await sleep(randInt(300, 700));
-
+        await sleep(randInt(250, 650));
         await typingHelper.simulateTyping(page, selector, value);
 
         logger.debug("Field filled", {
@@ -308,15 +306,7 @@ class SubmissionService {
     }
   }
 
-  /**
-   * Checks the consent checkbox using device-appropriate click.
-   * Required realism:
-   * - Cursor moves naturally
-   * - Hover delay 200–800ms random
-   * - Micro movement before click
-   * - Click offset not always center
-   * - Small pause, then move toward submit later (handled by flow)
-   */
+  
   async checkConsentCheckbox(page, selector, deviceType) {
     try {
       await browserService.clickElement(page, selector, deviceType, {
@@ -328,15 +318,12 @@ class SubmissionService {
 
       const isChecked = await page.evaluate((sel) => {
         const checkbox = document.querySelector(sel);
-        return checkbox ? !!checkbox.checked : false;
+        return checkbox ? checkbox.checked : false;
       }, selector);
 
-      if (!isChecked) {
-        throw new Error("Consent checkbox could not be checked");
-      }
+      if (!isChecked) throw new Error("Consent checkbox could not be checked");
 
-      // Small natural pause after checking (looks real)
-      await sleep(randInt(250, 750));
+      await sleep(randInt(250, 700));
     } catch (error) {
       throw new BrowserError(`Consent checkbox error: ${error.message}`);
     }
@@ -373,39 +360,22 @@ class SubmissionService {
         (await browserService.getFieldValue(page, "#xxTrustedFormPingUrl_0").catch(() => "")) || "",
     };
   }
-
-  /**
-   * Clicks the submit button with reliable human behavior.
-   * Must ensure:
-   * - real click event (mouse down/up)
-   * - hover + pause
-   * - then post-click wait: navigation OR network idle OR url/dom change
-   * - stay-open is enforced in submitForm (>=9s) after this returns
-   */
   async clickSubmitButton(page, submitSelector, deviceType) {
-    try {
-      await browserService.scrollIntoViewWithOffset(page, submitSelector);
+    await browserService.scrollIntoViewWithOffset(page, submitSelector);
 
-      // Use the robust submit click that also does best-effort post-click waiting
-      await browserService.clickSubmitAndWait(page, submitSelector, deviceType);
-
-      // Extra tiny buffer to ensure click is visible in playback
-      await sleep(randInt(500, 1100));
-    } catch (e) {
-      throw new BrowserError(`Submit click failed: ${e.message}`);
+    if (deviceType === "desktop") {
+      await browserService.clickElement(page, submitSelector, deviceType, {
+        purpose: "submit",
+        hoverDelayMs: randInt(180, 650),
+        microAdjust: true,
+        timeoutMs: 8000,
+      });
+    } else {
+      await page.tap(submitSelector);
+      await sleep(randInt(150, 380));
     }
-  }
 
-  /**
-   * NOTE: legacy method; not used for the stay-open guarantee.
-   */
-  async waitForProcessing(page, stayOpenTime = 9) {
-    const seconds = Number(stayOpenTime);
-    const safeSeconds = Number.isFinite(seconds) ? Math.max(seconds, 9) : 9;
-
-    logger.debug("Waiting after submit (legacy method)", { stayOpenTime: safeSeconds });
-    await sleep(safeSeconds * 1000);
-    return page.url();
+    await sleep(randInt(300, 700));
   }
 
   async updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults) {
@@ -414,15 +384,9 @@ class SubmissionService {
 
     submissionLog.result = "success";
 
-    const leadIdRaw = (submissionResult.leadId || "").trim();
+    const leadId = (submissionResult.leadId || "").trim();
 
-    /**
-     * ✅ Mongo duplicate key fix (leadid = "")
-     * If your DB has a unique index on leadId/metadata.leadId, empty string duplicates will fail.
-     * We keep real leadIds unchanged.
-     * If empty => store a unique fallback ID IN DB metadata only.
-     */
-    const leadIdForDb = leadIdRaw ? leadIdRaw : makeFallbackLeadId();
+    const leadIdForDb = leadId ? leadId : makeFallbackLeadId();
 
     submissionLog.metadata = {
       ...(leadIdForDb ? { leadId: leadIdForDb } : {}),
@@ -433,7 +397,7 @@ class SubmissionService {
       userAgent: submissionResult.userAgent,
       deviceType: submissionResult.deviceType,
       referer: "dynamic",
-      leadIdWasMissing: !leadIdRaw, // optional debug flag (safe)
+      leadIdWasMissing: !leadId,
     };
 
     submissionLog.timestamps.completedAt = completedAt;

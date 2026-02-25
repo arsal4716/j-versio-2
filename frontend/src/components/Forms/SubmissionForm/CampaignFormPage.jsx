@@ -91,7 +91,7 @@ const CampaignFormPage = () => {
 
       <div
         className="d-flex justify-content-center"
-        style={{ gap: 0, padding: "100px", alignItems: "stretch" }}
+        style={{ gap: 0, padding: "0 150px", alignItems: "stretch" }}
       >
         <div
           style={{

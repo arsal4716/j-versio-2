@@ -306,7 +306,7 @@ class SubmissionService {
     }
   }
 
-  
+
   async checkConsentCheckbox(page, selector, deviceType) {
     try {
       await browserService.clickElement(page, selector, deviceType, {

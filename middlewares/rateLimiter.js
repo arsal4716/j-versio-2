@@ -13,14 +13,13 @@ if (process.env.REDIS_URL) {
 }
 
 export const submissionRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 50 : 100, // requests per window
+  windowMs: 15 * 60 * 1000, 
+  max: process.env.NODE_ENV === 'production' ? 50 : 100, 
   message: 'Too many form submissions from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: false,
   keyGenerator: (req) => {
-    // Rate limit by user ID if authenticated, otherwise by IP
     return req.user ? req.user._id.toString() : req.ip;
   },
   handler: (req, res) => {

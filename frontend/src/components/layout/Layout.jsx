@@ -37,12 +37,10 @@ const Layout = ({ children }) => {
         </div>
       )}
 
-      {/* <Header /> */}
-
       {showSidebar && <Sidebar />}
 
       <main className={showSidebar ? "ps-lg-250" : ""}>
-        <div className="container-fluid py-4">
+        <div className="">
           {children}
         </div>
       </main>

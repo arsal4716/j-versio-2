@@ -48,7 +48,7 @@ const submissionLogSchema = new mongoose.Schema({
   timestamps: {
     startedAt: { type: Date, default: Date.now },
     completedAt: Date,
-    duration: Number // in milliseconds
+    duration: Number
   },
   sheetStatus: {
     master: { type: Boolean, default: false },

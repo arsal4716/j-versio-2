@@ -1,13 +1,23 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Container, Row, Col, Button, Spinner } from "react-bootstrap";
-import CampaignCard from "../CampaignCard/CampaignCard";
 import { Plus } from "lucide-react";
 import { useSelector } from "react-redux";
+import CampaignCard from "../CampaignCard/CampaignCard";
 
 const CampaignList = () => {
   const { user, allowedCampaigns } = useSelector((state) => state.auth);
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Map campaign name -> same variant styles you had in HTML
+  const variantFor = (name = "") => {
+    const n = name.toLowerCase();
+    if (n.includes("medicare")) return "medicare";
+    if (n.includes("final")) return "final-expense";
+    if (n.includes("mva")) return "mva";
+    if (n.includes("aca")) return "aca";
+    return "disabled";
+  };
 
   useEffect(() => {
     const storedCampaigns =
@@ -15,16 +25,38 @@ const CampaignList = () => {
         ? allowedCampaigns
         : JSON.parse(localStorage.getItem("allowedCampaigns")) || [];
 
-    setCampaigns(storedCampaigns);
+    // Normalize: support strings OR objects from API
+    const normalized = storedCampaigns.map((c) => {
+      if (typeof c === "string") {
+        return { name: c, url: "", isEnabled: true };
+      }
+      return {
+        name: c?.name ?? c?.title ?? "",
+        url: c?.url ?? c?.website ?? "",
+        isEnabled: c?.isEnabled ?? c?.enabled ?? true,
+      };
+    });
+
+    setCampaigns(normalized);
     setLoading(false);
   }, [allowedCampaigns]);
+
+  const onToggleCampaign = (idx, nextValue) => {
+    // UI-only toggle (doesn't break your logic)
+    // If you already have backend toggle API, call it here and then update state on success.
+    setCampaigns((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], isEnabled: nextValue };
+      return copy;
+    });
+  };
 
   return (
     <Container className="py-4">
       <Row className="mb-4 align-items-center">
         <Col>
-          <h2 className="fw-normal mb-0">
-            Good Morning, {user?.name || "Center"}
+          <h2 className="fw-normal mb-0" style={{ fontFamily: "Poppins, sans-serif" }}>
+            Welcome, {user?.name || "Center"}
           </h2>
         </Col>
         <Col xs="auto">
@@ -48,24 +80,13 @@ const CampaignList = () => {
         <Row className="g-4">
           {campaigns.map((campaign, index) => (
             <CampaignCard
-              key={index}
-              title={campaign}
+              key={`${campaign.name}-${index}`}
+              title={campaign.name}
+              url={campaign.url}
+              variant={variantFor(campaign.name)}
+              isEnabled={campaign.isEnabled}
+              onToggle={(v) => onToggleCampaign(index, v)}
               centerId={user?.centerId}
-              url={
-                campaign === "ACA"
-                  ? ""
-                  : campaign === "MVA"
-                  ? ""
-                  : ""
-              }
-              colorClass={
-                campaign === "ACA"
-                  ? "bg-gradient-purple-blue"
-                  : campaign === "MVA"
-                  ? "bg-gradient-pink-red"
-                  : "bg-dark-gray"
-              }
-              isEnabled={true}
             />
           ))}
         </Row>

@@ -13,7 +13,8 @@ const formSubmit = require('./routes/submitFormRoutes');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/userRoutes');
 const ensureSuperAdmin = require("./utils/ensureSuperAdmin");
-
+const apiConfigRoutes = require("./routes/apiConfigRoutes");
+const recordRoutes = require("./routes/recordRoutes");
 const app = express();
 
 /* ---------------- middleware ---------------- */
@@ -47,7 +48,8 @@ app.use('/api/centers', centerRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/form-setup', formSetupRoutes);
 app.use('/api/submit-form', formSubmit);
-
+app.use("/api/api-configs", apiConfigRoutes);
+app.use("/api/portal-records", recordRoutes);
 /* ---------------- frontend ---------------- */
 
 // serve frontend folder

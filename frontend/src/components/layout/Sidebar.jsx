@@ -46,6 +46,18 @@ const Sidebar = () => {
       exact: false
     },
     {
+      title: 'API Setup',
+      icon: <FormInput size={20} />,
+      path: '/super-admin/api-builder',
+      exact: false
+    },
+    {
+      title: 'Records',
+      icon: <FormInput size={20} />,
+      path: '/portal/records',
+      exact: false
+    },
+    {
       title: 'Users',
       icon: <Users size={20} />,
       path: '/users',

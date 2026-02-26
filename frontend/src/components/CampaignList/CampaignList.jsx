@@ -9,7 +9,6 @@ const CampaignList = () => {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Map campaign name -> same variant styles you had in HTML
   const variantFor = (name = "") => {
     const n = name.toLowerCase();
     if (n.includes("medicare")) return "medicare";
@@ -42,8 +41,6 @@ const CampaignList = () => {
   }, [allowedCampaigns]);
 
   const onToggleCampaign = (idx, nextValue) => {
-    // UI-only toggle (doesn't break your logic)
-    // If you already have backend toggle API, call it here and then update state on success.
     setCampaigns((prev) => {
       const copy = [...prev];
       copy[idx] = { ...copy[idx], isEnabled: nextValue };

@@ -21,16 +21,16 @@ const WhiteHeader = () => {
 
         {/* Navigation Links */}
         <Nav className="mx-auto d-none d-lg-flex">
-          <Nav.Link href="#truform" className="text-dark fw-medium mx-3">
+          <Nav.Link href="/truform" className="text-dark fw-medium mx-3">
             Truform
           </Nav.Link>
-          <Nav.Link href="#crm" className="text-dark fw-medium mx-3">
+          <Nav.Link href="/portal/records" className="text-dark fw-medium mx-3">
             CRM
           </Nav.Link>
-          <Nav.Link href="#privacy" className="text-dark fw-medium mx-3">
+          <Nav.Link href="/privacy" className="text-dark fw-medium mx-3">
             Privacy Policy
           </Nav.Link>
-          <Nav.Link href="#support" className="text-dark fw-medium mx-3">
+          <Nav.Link href="/support" className="text-dark fw-medium mx-3">
             Support
           </Nav.Link>
         </Nav>

@@ -21,6 +21,8 @@ import AdminDashboard from "./pages/Admin/Dashboard/Dashboard";
 import CentersPage from "./pages/Admin/CentersPage/Centers";
 import FormSetupsPage from "./pages/Admin/FormSetupsPage/FormSetup";
 import UsersPage from "./pages/Admin/UsersPage/Users";
+import ApiBuilderPage from "./pages/SuperAdmin/ApiBuilder/ApiBuilderPage";
+import RecordsPortalPage from "./pages/Portal/RecordsPortal/RecordsPortal";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -79,6 +81,16 @@ const AnimatedRoutes = () => {
           }
         />
         <Route
+  path="/portal/records"
+  element={
+    <ProtectedRoute>
+      <MotionContent>
+        <RecordsPortalPage />
+      </MotionContent>
+    </ProtectedRoute>
+  }
+/>
+        <Route
           path="/form/:centerId/:campaignName"
           element={
             <MotionContent>
@@ -132,7 +144,16 @@ const AnimatedRoutes = () => {
             </AdminRoute>
           }
         />
-        
+        <Route
+          path="/super-admin/api-builder*"
+          element={
+            <AdminRoute>
+              <MotionContent>
+        <ApiBuilderPage />
+              </MotionContent>
+            </AdminRoute>
+          }
+        />
         <Route
           path="/users/*"
           element={

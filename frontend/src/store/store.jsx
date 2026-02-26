@@ -8,6 +8,9 @@ import formFieldByCampaignReducer from "./slices/FormFieldsByCampaign";
 import submitFormReducer from "./slices/submitFormSlice";
 import formSetupReducer from "./slices/formSetupSlice"; 
 import userReducer from "./slices/userSlice";
+import apiConfigReducer from "./slices/apiConfigSlice";
+import recordReducer from "./slices/recordSlice";
+import tenantReducer from "./slices/tenantSlice";
 export const store = configureStore({
   reducer: {
     auth: authReducer,
@@ -18,6 +21,9 @@ export const store = configureStore({
     formSubmission: submitFormReducer,
     formSetup: formSetupReducer,
     users: userReducer, 
+    apiConfigs: apiConfigReducer,
+records: recordReducer,
+tenant: tenantReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

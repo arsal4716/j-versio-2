@@ -3,7 +3,7 @@ import { Container, Row, Col } from "react-bootstrap";
 import Layout from "../../components/layout/Layout";
 import Button from "../../components/Button/Button";
 import { FaFacebookF, FaInstagram, FaLinkedinIn } from "react-icons/fa";
-
+import { Link} from 'react-router-dom';
 const Home = () => {
   return (
     <Layout>
@@ -26,9 +26,12 @@ const Home = () => {
                 <Button variant="primary" size="md" className="me-3 px-3">
                   Our Pricing
                 </Button>
-                <Button variant="outline-dark" size="md" className="px-3">
-                  Try For Free
-                </Button>
+                
+<Link to="/login" style={{ textDecoration: "none" }}>
+  <Button variant="outline-dark" size="md" className="px-3">
+    Login
+  </Button>
+</Link>
               </div>
 
               <div className="social-links mt-4">

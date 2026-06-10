@@ -25,6 +25,7 @@ import ensureSuperAdmin from "./utils/ensureSuperAdmin.js";
 import apiConfigRoutes from "./routes/apiConfigRoutes.js";
 import recordRoutes from "./routes/recordRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
+import dncRoutes from "./routes/dncRoutes.js";
 
 const app = express();
 
@@ -76,6 +77,7 @@ app.use("/api/submit-form", formSubmit);
 app.use("/api/api-configs", apiConfigRoutes);
 app.use("/api/portal-records", recordRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/dnc", dncRoutes);
 
 /* ---------------- frontend (SPA) ---------------- */
 

@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Modal, Button, Form, Spinner, Row, Col } from "react-bootstrap";
 import { settingsService } from "../../services/settingsService";
+import { dncService } from "../../services/dncService";
 import { showToast } from "../../utils/Notifications";
 import "./SettingsModal.css";
 
@@ -47,6 +48,19 @@ const SettingsModal = ({ show, onHide, centerId, campaignName = null }) => {
   const [saving, setSaving] = useState(false);
   const [s, setS] = useState(null);
 
+  // Internal DNC list management.
+  const [dncCount, setDncCount] = useState(null);
+  const [dncUploading, setDncUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const refreshDncCount = () => {
+    if (!centerId) return;
+    dncService
+      .stats(centerId)
+      .then((res) => setDncCount(res.data.data.total))
+      .catch(() => setDncCount(null));
+  };
+
   useEffect(() => {
     if (!show || !centerId) return;
     setLoading(true);
@@ -55,7 +69,36 @@ const SettingsModal = ({ show, onHide, centerId, campaignName = null }) => {
       .then((res) => setS(res.data.data))
       .catch((e) => showToast("error", e.response?.data?.message || "Failed to load settings"))
       .finally(() => setLoading(false));
+    refreshDncCount();
   }, [show, centerId, campaignName]);
+
+  const handleDncUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) e.target.value = "";
+    if (!file) return;
+    setDncUploading(true);
+    try {
+      const res = await dncService.upload(centerId, campaignName, file);
+      const d = res.data.data;
+      showToast("success", `Added ${d.inserted} new (${d.duplicates} duplicate, ${d.invalid} invalid)`);
+      refreshDncCount();
+    } catch (err) {
+      showToast("error", err.response?.data?.message || "Upload failed");
+    } finally {
+      setDncUploading(false);
+    }
+  };
+
+  const handleDncClear = async () => {
+    if (!window.confirm("Remove all internal DNC numbers for this scope?")) return;
+    try {
+      await dncService.clear(centerId, campaignName);
+      showToast("success", "Internal DNC list cleared");
+      refreshDncCount();
+    } catch (err) {
+      showToast("error", err.response?.data?.message || "Failed to clear list");
+    }
+  };
 
   // helpers to set nested paths immutably
   const setPath = (path, val) => {
@@ -115,6 +158,35 @@ const SettingsModal = ({ show, onHide, centerId, campaignName = null }) => {
                   <ProviderRow label="Dnc.com" value={s.dnc.dncCom} onChange={(v) => setPath(["dnc", "dncCom"], v)} />
                   <ProviderRow label="LeadConduit" value={s.dnc.leadConduit} onChange={(v) => setPath(["dnc", "leadConduit"], v)} />
                   <ProviderRow label="Internal DNC List" value={s.dnc.internalDncRight} onChange={(v) => setPath(["dnc", "internalDncRight"], v)} placeholder="Attach your Files" />
+                </Col>
+              </Row>
+
+              <Row className="align-items-center mt-2 pt-2 border-top">
+                <Col xs={12} md={6}>
+                  <span className="setting-label">
+                    Internal DNC numbers{campaignName ? ` (${campaignName})` : " (center-wide)"}:{" "}
+                    <strong>{dncCount === null ? "—" : dncCount}</strong>
+                  </span>
+                </Col>
+                <Col xs={12} md={6} className="d-flex gap-2 justify-content-md-end mt-2 mt-md-0">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls,.txt"
+                    className="d-none"
+                    onChange={handleDncUpload}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline-primary"
+                    disabled={dncUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {dncUploading ? <Spinner size="sm" /> : "Upload CSV / XLSX / TXT"}
+                  </Button>
+                  <Button size="sm" variant="outline-danger" onClick={handleDncClear} disabled={dncUploading}>
+                    Clear
+                  </Button>
                 </Col>
               </Row>
             </Section>

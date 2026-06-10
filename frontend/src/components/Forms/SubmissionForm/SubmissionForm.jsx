@@ -1,9 +1,9 @@
-import { Form, Col } from "react-bootstrap";
+import { Form, Col, Spinner } from "react-bootstrap";
 import { XCircle, CheckCircle } from "lucide-react";
 
 const SubmissionForm = ({ field, value, onChange, validation = {}, options = [] }) => {
   const { label, name, type, placeholder, required } = field;
-  const { isInvalid = false, isValid = false, tagText, tagColor } = validation;
+  const { isInvalid = false, isValid = false, tagText, tagColor, isChecking = false } = validation;
 
   const colWidth = name === "phone" ? 12 : 6;
   const inputId = `field-${name}`;
@@ -39,7 +39,14 @@ const SubmissionForm = ({ field, value, onChange, validation = {}, options = [] 
           <label htmlFor={inputId}>{label}</label>
         </div>
 
-        {(tagText || isValid || isInvalid) && (
+        {isChecking && (
+          <div className="d-flex align-items-center mt-2 text-muted">
+            <Spinner animation="border" size="sm" className="me-2" />
+            <small>Checking DNC…</small>
+          </div>
+        )}
+
+        {!isChecking && (tagText || isValid || isInvalid) && (
           <div className="d-flex align-items-center mt-2">
             {tagText && (
               <div

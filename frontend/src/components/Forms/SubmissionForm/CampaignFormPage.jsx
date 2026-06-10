@@ -8,10 +8,12 @@ import {
 } from "../../../store/slices/submitFormSlice";
 import WhiteHeader from "../../layout/WhiteHeader";
 import LeftPanel from "../../Auth/LeftPanel";
-import { Row, Form, Button, Card, Spinner } from "react-bootstrap";
+import { Row, Form, Button, Card, Spinner, Alert } from "react-bootstrap";
 import SubmissionForm from "./SubmissionForm";
 import { notifySuccess, notifyError } from "../../../utils/Notifications";
 import { usStates } from "../../../utils/usStates";
+import useDebouncedValue from "../../../hooks/useDebouncedValue";
+import { dncService } from "../../../services/dncService";
 
 const CampaignFormPage = () => {
   const { centerId, campaignName } = useParams();
@@ -23,6 +25,11 @@ const CampaignFormPage = () => {
   const submissionState = useSelector((state) => state.formSubmission);
 
   const [formData, setFormData] = useState({});
+
+  // Real-time DNC / phone checker state.
+  const [phoneCheck, setPhoneCheck] = useState({ loading: false, result: null });
+  const [dncOverride, setDncOverride] = useState(false);
+  const debouncedPhone = useDebouncedValue(formData.phone || "", 450);
 
   const [timeSpent, setTimeSpent] = useState(0);
   const [timerActive, setTimerActive] = useState(false);
@@ -36,6 +43,30 @@ const CampaignFormPage = () => {
   useEffect(() => {
     dispatch(fetchFormFields({ centerId, campaignName }));
   }, [centerId, campaignName, dispatch]);
+
+  // Run enabled DNC checks as the agent types the phone number. A change to the
+  // number clears any prior override the agent had granted.
+  useEffect(() => {
+    const digits = (debouncedPhone || "").replace(/\D+/g, "");
+    setDncOverride(false);
+    if (digits.length !== 10) {
+      setPhoneCheck({ loading: false, result: null });
+      return;
+    }
+    let cancelled = false;
+    setPhoneCheck({ loading: true, result: null });
+    dncService
+      .check({ centerId, campaignName, phone: digits })
+      .then((res) => {
+        if (!cancelled) setPhoneCheck({ loading: false, result: res.data.data });
+      })
+      .catch(() => {
+        if (!cancelled) setPhoneCheck({ loading: false, result: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedPhone, centerId, campaignName]);
 
   useEffect(() => {
     if (!submissionState.message) return;
@@ -67,13 +98,38 @@ const CampaignFormPage = () => {
     setFormData({ ...formData, [name]: value });
   };
 
+  const dncBlocked = !!phoneCheck.result?.blocked;
+
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (phoneCheck.loading) {
+      notifyError("Please wait for the phone number check to finish.");
+      return;
+    }
+    if (dncBlocked && !dncOverride) {
+      notifyError("This number is blocked. Confirm the override to proceed.");
+      return;
+    }
+
     setTimeSpent(0);
     setTimerActive(true);
-    dispatch(submitCampaignForm({ centerId, campaignName, formData })).finally(
+    const payload = dncBlocked && dncOverride ? { ...formData, dncOverride: true } : formData;
+    dispatch(submitCampaignForm({ centerId, campaignName, formData: payload })).finally(
       () => setTimerActive(false),
     );
+  };
+
+  // Per-field validation tags. The phone field reflects the live DNC result.
+  const phoneValidation = () => {
+    if (phoneCheck.loading) return { isChecking: true };
+    const r = phoneCheck.result;
+    if (!r || !r.valid) return {};
+    if (r.blocked) {
+      const failed = (r.checks || []).filter((c) => c.listed).map((c) => c.label).join(", ");
+      return { isInvalid: true, tagText: `Blocked: ${failed}`, tagColor: "red" };
+    }
+    return { isValid: true, tagText: "Passed DNC", tagColor: "green" };
   };
 
   if (loading) return <div>Loading form…</div>;
@@ -133,15 +189,35 @@ const CampaignFormPage = () => {
                   value={formData[field.name] || ""}
                   onChange={handleChange}
                   options={field.name === "state" ? usStates : []}
+                  validation={field.name === "phone" ? phoneValidation() : {}}
                 />
               ))}
             </Row>
+
+            {dncBlocked && (
+              <Alert variant="danger" className="mt-2">
+                <div className="fw-bold mb-2">
+                  This phone number is on a Do-Not-Call / blacklist.
+                </div>
+                <Form.Check
+                  type="checkbox"
+                  id="dnc-override"
+                  checked={dncOverride}
+                  onChange={(e) => setDncOverride(e.target.checked)}
+                  label="I have authorization to contact this number and accept responsibility for overriding the block."
+                />
+              </Alert>
+            )}
 
             <div className="text-end mt-4">
               <Button
                 type="submit"
                 variant="primary"
-                disabled={submissionState.loading}
+                disabled={
+                  submissionState.loading ||
+                  phoneCheck.loading ||
+                  (dncBlocked && !dncOverride)
+                }
               >
                 {submissionState.loading ? (
                   <>

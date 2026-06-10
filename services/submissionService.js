@@ -6,6 +6,7 @@ import proxyService from "./proxyService.js";
 import browserService from "./browserService.js";
 import sheetService from "./sheetService.js";
 import deviceService from "./deviceService.js";
+import dncService from "./dncService.js";
 import TypingHelper from "../helper/typingHelper.js";
 
 import {
@@ -40,6 +41,11 @@ class SubmissionService {
       const formSetup = await this.getFormSetup(centerId, campaignName);
 
       submissionLog = await this.createSubmissionLog(centerId, campaignName, formData, user);
+
+      // DNC enforcement (defense-in-depth; the form page also checks in real time).
+      // A confirmed list hit blocks the automation unless the agent explicitly
+      // overrode it at submit time.
+      await this.enforceDnc(centerId, campaignName, formData);
 
       const proxyConfig = await proxyService.getProxyForCenter(center, formData);
 
@@ -158,6 +164,36 @@ class SubmissionService {
 
     if (!user?.allowedCampaigns?.includes(campaignName)) {
       throw new AuthorizationError("You do not have permission for this campaign");
+    }
+  }
+
+  // Resolves the phone from the submitted form data and runs the configured DNC
+  // checks. Throws if the number is listed and the agent did not override.
+  async enforceDnc(centerId, campaignName, formData) {
+    const override =
+      formData?.dncOverride === true ||
+      formData?.dncOverride === "true" ||
+      formData?._dncOverride === true;
+    if (override) return;
+
+    const rawPhone =
+      formData?.phone ||
+      formData?.phoneNumber ||
+      Object.entries(formData || {}).find(([k]) => /phone/i.test(k))?.[1];
+
+    if (!rawPhone) return;
+
+    const result = await dncService.checkPhone({
+      centerId,
+      campaignName,
+      phone: rawPhone,
+    });
+
+    if (result.blocked) {
+      const failed = result.checks.filter((c) => c.listed).map((c) => c.label).join(", ");
+      throw new ValidationError(
+        `Submission blocked: phone number is listed (${failed}). Agent override required.`
+      );
     }
   }
 

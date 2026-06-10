@@ -9,6 +9,7 @@ const toggleKeySchema = new mongoose.Schema(
   {
     enabled: { type: Boolean, default: false },
     apiKey: { type: String, default: "" },      // for providers that need a key
+    endpoint: { type: String, default: "" },    // optional override of provider URL
     filePath: { type: String, default: "" },    // for "Attach your Files" providers
   },
   { _id: false }

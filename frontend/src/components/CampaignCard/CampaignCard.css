@@ -1,0 +1,203 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
+
+/* Only affects these cards */
+.campaign-card {
+  font-family: "Poppins", sans-serif;
+
+  border-radius: 16px;
+  padding: 28px 24px 20px;
+  position: relative;
+  overflow: hidden;
+  min-height: 140px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.campaign-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+}
+
+/* Decorative circles */
+.campaign-card::before,
+.campaign-card::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.campaign-card::before {
+  width: 180px;
+  height: 180px;
+  bottom: -50px;
+  right: 40px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.campaign-card::after {
+  width: 120px;
+  height: 120px;
+  bottom: -20px;
+  right: -20px;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+/* Variants (same as your index.html) */
+.card-medicare {
+  background: linear-gradient(135deg, #4a6cf7 0%, #6b8cff 60%, #a8bfff 100%);
+}
+
+.card-final-expense {
+  background: linear-gradient(135deg, #1db954 0%, #3ddc84 50%, #a8f0c8 100%);
+}
+
+.card-mva {
+  background: linear-gradient(135deg, #ff4757 0%, #ff6b81 50%, #ff9eb5 100%);
+}
+
+.card-aca {
+  background: linear-gradient(135deg, #a855f7 0%, #c084fc 40%, #e879f9 100%);
+}
+
+.card-disabled {
+  background: linear-gradient(135deg, #8e8e93 0%, #a8a8ad 50%, #c7c7cc 100%);
+}
+
+/* Top row */
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.card-info {
+  z-index: 1;
+}
+
+.card-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.card-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 400;
+}
+
+/* Toggle switch */
+.toggle-wrapper {
+  z-index: 2;
+}
+
+.toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.3s;
+}
+
+.toggle::before {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 2px;
+  left: 2px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.3s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.toggle:checked {
+  background: #3b82f6;
+}
+
+.toggle:checked::before {
+  transform: translateX(20px);
+}
+
+.card-disabled .toggle {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Actions */
+.card-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+  z-index: 1;
+  margin-top: 16px;
+}
+
+.card-actions .btn {
+  padding: 7px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: "Poppins", sans-serif;
+  transition: all 0.2s;
+}
+
+.btn-customize,
+.btn-outsource {
+  background: rgba(255, 255, 255, 0.85);
+  color: #333;
+}
+
+.btn-customize:hover,
+.btn-outsource:hover {
+  background: #fff;
+}
+
+.btn-open {
+  background: #3b5bdb;
+  color: #fff;
+}
+
+.btn-open:hover {
+  background: #2f4bc0;
+}
+
+/* Disabled behavior (same vibe as html file) */
+.card-disabled .card-title {
+  opacity: 0.9;
+}
+
+.card-disabled .card-subtitle {
+  opacity: 0.7;
+}
+
+.card-disabled .card-actions .btn {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card-disabled .btn-open {
+  background: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.card-disabled .btn-customize,
+.card-disabled .btn-outsource {
+  background: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.6);
+}

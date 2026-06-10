@@ -1,0 +1,116 @@
+body {
+  background-color: #f7f3ff;
+  background-image: radial-gradient(
+      circle at 10% 90%,
+      #ffc0cb40 0%,
+      transparent 50%
+    ),
+    radial-gradient(circle at 90% 10%, #add8e640 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, #e0ffff30 0%, transparent 50%);
+  min-height: 100vh;
+}
+
+.campaign-card {
+  border: none;
+  border-radius: 1rem;
+  min-height: 120px;
+  transition: transform 0.2s ease-in-out;
+}
+
+.campaign-card.enabled:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+}
+
+.card-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.card-url {
+  font-size: 0.9rem;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.bg-gradient-purple-blue {
+  background: linear-gradient(135deg, #7b68ee, #4169e1);
+}
+
+.bg-gradient-green {
+  background: linear-gradient(135deg, #3cb371, #2e8b57);
+}
+
+.bg-gradient-pink-red {
+  background: linear-gradient(135deg, #ff69b4, #ff4500);
+}
+
+.bg-gradient-purple {
+  background: linear-gradient(135deg, #9370db, #8a2be2);
+}
+
+.bg-dark-gray {
+  background-color: #555555 !important;
+  color: #aaaaaa !important;
+}
+
+.bg-dark-gray .card-title,
+.bg-dark-gray .card-url,
+.bg-dark-gray .btn,
+.bg-dark-gray .form-check-input {
+  color: #aaaaaa !important;
+}
+
+.campaign-card .btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px; /* Pill shape */
+  transition: all 0.2s;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background-color: transparent;
+  color: white;
+}
+
+.campaign-card.disabled .btn {
+  border: 1px solid #aaaaaa !important;
+  color: #aaaaaa !important;
+}
+
+.campaign-card .btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: white;
+}
+
+.form-switch {
+  padding-left: 2.5em;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.form-switch .form-check-input {
+  width: 2.2em;
+  height: 1.2em;
+  margin-top: 0;
+  margin-left: -2.5em;
+  background-color: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: none !important;
+}
+
+.form-switch .form-check-input:checked {
+  background-color: #ffffff;
+  border-color: #ffffff;
+}
+
+.bg-dark-gray .form-switch .form-check-input {
+  background-color: #444444;
+  border-color: #666666;
+}
+
+.bg-dark-gray .form-switch .form-check-input:checked {
+  background-color: #999999;
+  border-color: #999999;
+}

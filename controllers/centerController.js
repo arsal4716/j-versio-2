@@ -5,6 +5,7 @@ import Center from "../models/Center.js";
 import User from "../models/User.js";
 import { success, fail } from "../utils/response.js";
 import { STATUS_CODES } from "../config/constants.js";
+import { audit } from "../services/auditService.js";
 
 // Escapes a string for safe use inside a RegExp (used for case-insensitive
 // exact-match uniqueness checks).
@@ -146,6 +147,15 @@ export const createCenter = async (req, res, next) => {
       });
     }
 
+    audit({
+      req,
+      centerId: center._id,
+      action: "center.create",
+      entity: "Center",
+      entityId: center._id,
+      message: `Center "${center.name}" created`,
+    });
+
     return success(res, {
       message: "Center created successfully",
       data: {
@@ -283,6 +293,15 @@ export const updateCenter = async (req, res, next) => {
       { new: true, runValidators: true },
     ).populate("createdBy", "name centerAdminEmail");
 
+    audit({
+      req,
+      centerId: updatedCenter._id,
+      action: "center.update",
+      entity: "Center",
+      entityId: updatedCenter._id,
+      message: `Center "${updatedCenter.name}" updated`,
+    });
+
     return success(res, {
       message: "Center updated successfully",
       data: updatedCenter,
@@ -311,6 +330,15 @@ export const deleteCenter = async (req, res, next) => {
     }
 
     await Center.findByIdAndDelete(req.params.id);
+
+    audit({
+      req,
+      centerId: center._id,
+      action: "center.delete",
+      entity: "Center",
+      entityId: center._id,
+      message: `Center "${center.name}" deleted`,
+    });
 
     return success(res, {
       message: "Center deleted successfully",

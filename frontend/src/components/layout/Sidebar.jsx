@@ -11,7 +11,8 @@ import {
   LogOut,
   Menu,
   X,
-  Settings
+  Settings,
+  ScrollText
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -61,6 +62,12 @@ const Sidebar = () => {
       title: 'Users',
       icon: <Users size={20} />,
       path: '/users',
+      exact: false
+    },
+    {
+      title: 'Logs',
+      icon: <ScrollText size={20} />,
+      path: '/logs',
       exact: false
     },
     {

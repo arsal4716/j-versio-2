@@ -4,6 +4,7 @@ import Center from "../models/Center.js";
 import { success, fail } from "../utils/response.js";
 import { STATUS_CODES } from "../config/constants.js";
 import bcrypt from "bcryptjs";
+import { audit } from "../services/auditService.js";
 
 export const getAllUsers = async (req, res, next) => {
   try {
@@ -109,6 +110,15 @@ export const createUser = async (req, res, next) => {
     const userResponse = user.toObject();
     delete userResponse.password;
 
+    audit({
+      req,
+      centerId: user.centerId,
+      action: "user.create",
+      entity: "User",
+      entityId: user._id,
+      message: `User ${user.email} created`,
+    });
+
     return success(res, {
       message: 'User created successfully',
       data: userResponse,
@@ -153,6 +163,16 @@ export const updateUser = async (req, res, next) => {
       });
     }
 
+    audit({
+      req,
+      centerId: user.centerId,
+      action: "user.update",
+      entity: "User",
+      entityId: user._id,
+      message: `User ${user.email} updated`,
+      details: { passwordChanged: !!req.body.password },
+    });
+
     return success(res, {
       message: 'User updated successfully',
       data: user
@@ -172,6 +192,15 @@ export const deleteUser = async (req, res, next) => {
         status: STATUS_CODES.NOT_FOUND
       });
     }
+
+    audit({
+      req,
+      centerId: user.centerId,
+      action: "user.delete",
+      entity: "User",
+      entityId: user._id,
+      message: `User ${user.email} deleted`,
+    });
 
     return success(res, {
       message: 'User deleted successfully'

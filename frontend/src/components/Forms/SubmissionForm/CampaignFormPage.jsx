@@ -8,12 +8,25 @@ import {
 } from "../../../store/slices/submitFormSlice";
 import WhiteHeader from "../../layout/WhiteHeader";
 import LeftPanel from "../../Auth/LeftPanel";
-import { Row, Form, Button, Card, Spinner, Alert } from "react-bootstrap";
+import { Row, Form, Button, Card, Spinner, Alert, ProgressBar } from "react-bootstrap";
 import SubmissionForm from "./SubmissionForm";
 import { notifySuccess, notifyError } from "../../../utils/Notifications";
 import { usStates } from "../../../utils/usStates";
 import useDebouncedValue from "../../../hooks/useDebouncedValue";
 import { dncService } from "../../../services/dncService";
+
+const ResultRow = ({ label, value }) => (
+  <div className="d-flex justify-content-between">
+    <span className="fw-medium">{label}:</span>
+    {value ? (
+      <span className="text-break ms-2" style={{ maxWidth: "70%", textAlign: "right" }}>
+        {value}
+      </span>
+    ) : (
+      <span className="text-warning ms-2">Not captured</span>
+    )}
+  </div>
+);
 
 const CampaignFormPage = () => {
   const { centerId, campaignName } = useParams();
@@ -73,18 +86,17 @@ const CampaignFormPage = () => {
 
     if (submissionState.success) {
       notifySuccess(submissionState.message);
+      // Clear the inputs for the next lead but keep the result panel
+      // (submissionState.data) visible until the next submission starts.
       setFormData({});
       setTimeSpent(0);
     } else if (submissionState.error) {
       notifyError(submissionState.message);
     }
-
-    dispatch(resetSubmissionState());
   }, [
     submissionState.message,
     submissionState.success,
     submissionState.error,
-    dispatch,
   ]);
 
   const handleChange = (e) => {
@@ -216,6 +228,42 @@ const CampaignFormPage = () => {
               .padStart(2, "0")}
             :{(timeSpent % 60).toString().padStart(2, "0")}
           </p>
+
+          {submissionState.loading && (
+            <Card className="mb-3 border-primary">
+              <Card.Body className="text-center">
+                <div className="d-flex align-items-center justify-content-center mb-2">
+                  <Spinner animation="border" size="sm" className="me-2" />
+                  <span className="fw-bold">Form Queued</span>
+                </div>
+                <ProgressBar
+                  now={submissionState.progress || 5}
+                  animated
+                  striped
+                  className="mb-2"
+                />
+                <div className="text-muted">
+                  {submissionState.phase || "Submitting…"}
+                </div>
+                <small className="text-muted">
+                  Elapsed: {Math.floor(timeSpent / 60).toString().padStart(2, "0")}:
+                  {(timeSpent % 60).toString().padStart(2, "0")} — you can keep this
+                  tab open; the result will appear here automatically.
+                </small>
+              </Card.Body>
+            </Card>
+          )}
+
+          {!submissionState.loading && submissionState.success && submissionState.data && (
+            <Alert variant="success" className="mb-3" onClose={() => dispatch(resetSubmissionState())} dismissible>
+              <div className="fw-bold mb-2">Submission Result</div>
+              <div className="d-flex flex-column gap-1">
+                <ResultRow label="IP Address" value={submissionState.data.ipAddress} />
+                <ResultRow label="Jornaya Lead ID" value={submissionState.data.leadId} />
+                <ResultRow label="TrustedForm" value={submissionState.data.trustedForm} />
+              </div>
+            </Alert>
+          )}
 
           <Form onSubmit={handleSubmit}>
             <Row>

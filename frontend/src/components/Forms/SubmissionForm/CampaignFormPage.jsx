@@ -260,6 +260,9 @@ const CampaignFormPage = () => {
               <div className="d-flex flex-column gap-1">
                 <ResultRow label="IP Address" value={submissionState.data.ipAddress} />
                 <ResultRow label="Jornaya Lead ID" value={submissionState.data.leadId} />
+                {submissionState.data.placeId ? (
+                  <ResultRow label="Place ID" value={submissionState.data.placeId} />
+                ) : null}
                 <ResultRow label="TrustedForm" value={submissionState.data.trustedForm} />
               </div>
             </Alert>

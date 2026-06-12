@@ -5,6 +5,24 @@ import { ValidationError, NotFoundError, AuthorizationError } from "../utils/err
 
 const isSuperAdmin = (user) => Array.isArray(user?.roles) && user.roles.includes("super_admin");
 
+const isPlainObject = (v) =>
+  v && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date);
+
+// Deep-merges source onto target (arrays replaced, not concatenated).
+function deepMerge(target, source) {
+  const out = { ...target };
+  for (const key of Object.keys(source || {})) {
+    const sv = source[key];
+    if (sv === undefined || sv === null) continue;
+    if (isPlainObject(sv) && isPlainObject(out[key])) {
+      out[key] = deepMerge(out[key], sv);
+    } else {
+      out[key] = sv;
+    }
+  }
+  return out;
+}
+
 // Tenant guard: super_admin → any center; admin → only own center; user → denied write.
 function assertCenterAccess(user, centerId, { write = false } = {}) {
   if (isSuperAdmin(user)) return;
@@ -36,6 +54,21 @@ class SettingsService {
       doc = await SettingsConfig.create({ ...scope, createdBy: user._id, updatedBy: user._id });
     }
     return doc;
+  }
+
+  // Resolves the settings actually in effect for a scope, applying the hierarchy:
+  //   schema defaults  ←  center default  ←  campaign override
+  // (campaign wins, then center, then defaults). Returns a plain object; safe to
+  // call without a user (used by the automation pipeline).
+  async getEffectiveSettings(centerId, campaignName = null) {
+    const [centerDoc, campaignDoc] = await Promise.all([
+      SettingsConfig.findOne({ centerId, campaignName: null }).lean(),
+      campaignName ? SettingsConfig.findOne({ centerId, campaignName }).lean() : null,
+    ]);
+    // A fresh (unsaved) document guarantees every default key is present.
+    const defaults = new SettingsConfig({ centerId }).toObject();
+    delete defaults._id;
+    return deepMerge(deepMerge(defaults, centerDoc || {}), campaignDoc || {});
   }
 
   // Full upsert of a scope's settings. `patch` is the settings object from the UI.

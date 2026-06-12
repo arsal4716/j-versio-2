@@ -6,6 +6,7 @@ import User from "../models/User.js";
 import { success, fail } from "../utils/response.js";
 import { STATUS_CODES } from "../config/constants.js";
 import { audit } from "../services/auditService.js";
+import { saveServiceAccountKey } from "../utils/storage.js";
 
 // Escapes a string for safe use inside a RegExp (used for case-insensitive
 // exact-match uniqueness checks).
@@ -58,11 +59,8 @@ export const createCenter = async (req, res, next) => {
     let clientKeyFilePath = null;
 
     if (req.file) {
-      const folderPath = path.join("sheets", verificationCode);
-      fs.mkdirSync(folderPath, { recursive: true });
-      const filePath = path.join(folderPath, "client-key.json");
-      fs.renameSync(req.file.path, filePath);
-      clientKeyFilePath = filePath;
+      // Validates JSON and stores at storage/centers/{name}/google-key.json.
+      clientKeyFilePath = saveServiceAccountKey(name, req.file.path);
     }
 
     const center = new Center({
@@ -271,6 +269,17 @@ export const updateCenter = async (req, res, next) => {
         req.body[field] = JSON.parse(req.body[field]);
       }
     });
+
+    // A newly-uploaded Google key must be persisted on update too (this was
+    // previously dropped, so re-uploading a key silently did nothing).
+    if (req.file) {
+      const savedPath = saveServiceAccountKey(req.body.name || center.name, req.file.path);
+      req.body.googleSheets = {
+        ...(center.googleSheets?.toObject?.() || center.googleSheets || {}),
+        ...(req.body.googleSheets || {}),
+        clientKeyFile: savedPath,
+      };
+    }
 
     // Enforce globally-unique center name on rename (case-insensitive).
     if (req.body.name && String(req.body.name).trim() !== center.name) {

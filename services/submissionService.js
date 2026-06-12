@@ -7,6 +7,7 @@ import browserService from "./browserService.js";
 import sheetService from "./sheetService.js";
 import deviceService from "./deviceService.js";
 import dncService from "./dncService.js";
+import settingsService from "./settingsService.js";
 import TypingHelper from "../helper/typingHelper.js";
 
 import {
@@ -49,15 +50,23 @@ class SubmissionService {
 
       const proxyConfig = await proxyService.getProxyForCenter(center, formData);
 
-      // Select device
-      device = deviceService.selectDeviceBasedOnDistribution(center?.settings?.deviceDistribution);
+      // Effective settings honour the hierarchy: campaign override → center
+      // default → schema defaults. We map them onto the automation inputs but
+      // always fall back to the Center's base settings so existing behaviour is
+      // preserved when the panel is left at defaults.
+      const eff = await this.getEffectiveCustomization(centerId, campaignName);
+
+      // Select device (panel device mix wins when configured; else center base)
+      device = deviceService.selectDeviceBasedOnDistribution(
+        eff.deviceDistribution || center?.settings?.deviceDistribution
+      );
 
       // Launch Browser
       ({ browser, page } = await browserService.launchBrowserWithProxy({
         proxyUrl: proxyConfig.proxyUrl,
         proxyUsername: proxyConfig.username,
         proxyPassword: proxyConfig.password,
-        referrers: center?.settings?.referrers,
+        referrers: eff.referrers || center?.settings?.referrers,
       }));
 
       await browserService.emulateDevice(page, device);
@@ -73,7 +82,7 @@ class SubmissionService {
       // Typing speed randomization
       const typingSpeed = this.getRandomTypingSpeed(center?.settings?.typingSpeed);
       const typingHelper = new TypingHelper(typingSpeed, {
-        makeMistakesProbability: 0.3,
+        makeMistakesProbability: eff.randomTypingMistakes ? 0.3 : 0,
         fieldPause: { min: 1000, max: 3000 },
       });
 
@@ -94,6 +103,7 @@ class SubmissionService {
       // Pre-submit captures
       const leadId = await this.getLeadId(page);
       const ipAddress = await this.getUserIp(page);
+      const placeId = await this.getPlaceId(page, formData);
 
       // Prepare Submit
       let submitSelector = (formSetup?.submitButtonSelector || "").trim();
@@ -117,6 +127,7 @@ class SubmissionService {
       const submissionResult = {
         ...formData,
         leadId,
+        placeId,
         trustedForm: trustedFormData?.cert || "",
         ipAddress,
         proxyIp: proxyConfig.ip,
@@ -141,6 +152,43 @@ class SubmissionService {
       throw error;
     } finally {
       await browserService.closeBrowser(browser);
+    }
+  }
+
+  // Reads the effective (campaign→center→default) panel settings and maps the
+  // pieces the automation consumes. Every field falls back to undefined so the
+  // caller can use the Center's base settings when nothing is configured.
+  async getEffectiveCustomization(centerId, campaignName) {
+    try {
+      const eff = await settingsService.getEffectiveSettings(centerId, campaignName);
+      const c = eff?.customization || {};
+
+      let deviceDistribution;
+      const d = c.devices;
+      if (d) {
+        const mapped = {
+          desktop: d.desktop?.enabled ? Number(d.desktop.percentage) || 0 : 0,
+          tablet: d.tablet?.enabled ? Number(d.tablet.percentage) || 0 : 0,
+          mobile: d.mobile?.enabled ? Number(d.mobile.percentage) || 0 : 0,
+        };
+        if (mapped.desktop + mapped.tablet + mapped.mobile > 0) deviceDistribution = mapped;
+      }
+
+      let referrers;
+      if (c.referers?.enabled && Array.isArray(c.referers.links) && c.referers.links.length) {
+        referrers = c.referers.links;
+      }
+
+      return {
+        deviceDistribution,
+        referrers,
+        randomTypingMistakes: c.typing?.randomTypingMistakes !== false,
+      };
+    } catch (e) {
+      logger.warn("Failed to resolve effective settings; using center defaults", {
+        error: e?.message,
+      });
+      return { randomTypingMistakes: true };
     }
   }
 
@@ -374,6 +422,23 @@ class SubmissionService {
     }
   }
 
+  // Place ID: prefer an explicit submitted value (form field placeId/place_id/
+  // cid), otherwise read a conventional hidden field from the lander.
+  async getPlaceId(page, formData) {
+    const fromForm =
+      formData?.placeId ?? formData?.place_id ?? formData?.cid ?? formData?.CID;
+    if (fromForm) return String(fromForm).trim();
+    for (const sel of ["#place_id", "#placeId", "#cid"]) {
+      try {
+        const v = await browserService.getFieldValue(page, sel);
+        if (v && String(v).trim()) return String(v).trim();
+      } catch {
+        /* try next */
+      }
+    }
+    return "";
+  }
+
   async getUserIp(page) {
     try {
       const v = await browserService.getFieldValue(page, "#user_ip");
@@ -426,6 +491,7 @@ class SubmissionService {
 
     submissionLog.metadata = {
       ...(leadIdForDb ? { leadId: leadIdForDb } : {}),
+      ...(submissionResult.placeId ? { placeId: submissionResult.placeId } : {}),
       trustedForm: submissionResult.trustedForm,
       ipAddress: submissionResult.ipAddress,
       proxyIp: submissionResult.proxyIp,
@@ -471,6 +537,7 @@ class SubmissionService {
       message: "Form submitted successfully",
       data: {
         leadId: submissionResult.leadId,
+        placeId: submissionResult.placeId,
         trustedForm: submissionResult.trustedForm,
         ipAddress: submissionResult.ipAddress,
         proxyIp: submissionResult.proxyIp,

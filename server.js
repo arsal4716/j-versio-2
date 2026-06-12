@@ -27,6 +27,7 @@ import recordRoutes from "./routes/recordRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import dncRoutes from "./routes/dncRoutes.js";
 import auditRoutes from "./routes/auditRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
 
 const app = express();
 
@@ -80,6 +81,7 @@ app.use("/api/portal-records", recordRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/dnc", dncRoutes);
 app.use("/api/logs", auditRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 /* ---------------- frontend (SPA) ---------------- */
 

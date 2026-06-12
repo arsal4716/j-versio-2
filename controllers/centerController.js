@@ -6,14 +6,17 @@ import User from "../models/User.js";
 import { success, fail } from "../utils/response.js";
 import { STATUS_CODES } from "../config/constants.js";
 
+// Escapes a string for safe use inside a RegExp (used for case-insensitive
+// exact-match uniqueness checks).
+const escapeRegex = (s = "") => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const exactCI = (value) => new RegExp(`^${escapeRegex(String(value).trim())}$`, "i");
+
 export const createCenter = async (req, res, next) => {
   try {
     let {
       name,
       verificationCode,
       centerAdminEmail,
-      contactPerson,
-      phone,
       proxy,
       googleSheets,
       settings,
@@ -26,6 +29,22 @@ export const createCenter = async (req, res, next) => {
       settings.deviceDistribution = JSON.parse(settings.deviceDistribution);
     if (typeof req.body.campaigns === "string")
       req.body.campaigns = JSON.parse(req.body.campaigns);
+
+    if (!name || !String(name).trim()) {
+      return fail(res, {
+        message: "Center name is required",
+        status: STATUS_CODES.BAD_REQUEST,
+      });
+    }
+
+    // Center name must be globally unique (case-insensitive).
+    const nameTaken = await Center.findOne({ name: exactCI(name) });
+    if (nameTaken) {
+      return fail(res, {
+        message: "A center with this name already exists",
+        status: STATUS_CODES.BAD_REQUEST,
+      });
+    }
 
     const existingCenter = await Center.findOne({ verificationCode });
     if (existingCenter) {
@@ -46,11 +65,9 @@ export const createCenter = async (req, res, next) => {
     }
 
     const center = new Center({
-      name,
+      name: String(name).trim(),
       verificationCode,
       centerAdminEmail,
-      contactPerson,
-      phone,
       proxy: {
         provider: proxy?.provider || "decodo",
         username: proxy?.username,
@@ -82,21 +99,50 @@ export const createCenter = async (req, res, next) => {
     await center.save();
 
     // Per spec: creating a center automatically provisions its admin account.
-    // Login = centerAdminEmail / verificationCode. Idempotent: skip if the user
-    // already exists (e.g. re-running against an existing email).
-    let adminUser = null;
-    const existingAdmin = await User.findOne({ email: centerAdminEmail });
-    if (!existingAdmin) {
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(String(verificationCode), salt);
-      adminUser = await User.create({
-        name: `${name} Admin`,
-        company: name,
-        email: centerAdminEmail,
-        password: hashedPassword,
-        roles: ["admin"],
-        centerId: center._id,
-        allowedCampaigns: (center.campaigns || []).map((c) => c.name),
+    // Login = centerAdminEmail / verificationCode. This must never leave an
+    // orphan: if admin provisioning fails after the center is saved, we roll the
+    // center back so the operator can retry cleanly.
+    let adminCreated = false;
+    try {
+      const campaignNames = (center.campaigns || []).map((c) => c.name);
+      const existingAdmin = await User.findOne({ email: centerAdminEmail });
+
+      if (!existingAdmin) {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(String(verificationCode), salt);
+        await User.create({
+          name: `${name} Admin`,
+          company: name,
+          email: centerAdminEmail,
+          password: hashedPassword,
+          roles: ["admin"],
+          centerId: center._id,
+          allowedCampaigns: campaignNames,
+        });
+        adminCreated = true;
+      } else {
+        // Repair an unlinked / passwordless admin so the account is usable.
+        const repair = {};
+        if (!existingAdmin.centerId) repair.centerId = center._id;
+        if (!Array.isArray(existingAdmin.roles) || !existingAdmin.roles.includes("admin")) {
+          repair.roles = [...new Set([...(existingAdmin.roles || []), "admin"])];
+        }
+        if (!existingAdmin.password) {
+          const salt = await bcrypt.genSalt(10);
+          repair.password = await bcrypt.hash(String(verificationCode), salt);
+        }
+        if (!existingAdmin.allowedCampaigns?.length && campaignNames.length) {
+          repair.allowedCampaigns = campaignNames;
+        }
+        if (Object.keys(repair).length) {
+          await User.updateOne({ _id: existingAdmin._id }, { $set: repair });
+        }
+      }
+    } catch (adminErr) {
+      await Center.findByIdAndDelete(center._id).catch(() => {});
+      return fail(res, {
+        message: `Failed to provision center admin: ${adminErr.message}`,
+        status: STATUS_CODES.SERVER_ERROR,
       });
     }
 
@@ -104,7 +150,7 @@ export const createCenter = async (req, res, next) => {
       message: "Center created successfully",
       data: {
         center,
-        adminCreated: !!adminUser,
+        adminCreated,
         adminEmail: centerAdminEmail,
       },
       status: STATUS_CODES.CREATED,
@@ -215,6 +261,21 @@ export const updateCenter = async (req, res, next) => {
         req.body[field] = JSON.parse(req.body[field]);
       }
     });
+
+    // Enforce globally-unique center name on rename (case-insensitive).
+    if (req.body.name && String(req.body.name).trim() !== center.name) {
+      const clash = await Center.findOne({
+        _id: { $ne: center._id },
+        name: exactCI(req.body.name),
+      });
+      if (clash) {
+        return fail(res, {
+          message: "A center with this name already exists",
+          status: STATUS_CODES.BAD_REQUEST,
+        });
+      }
+      req.body.name = String(req.body.name).trim();
+    }
 
     const updatedCenter = await Center.findByIdAndUpdate(
       req.params.id,

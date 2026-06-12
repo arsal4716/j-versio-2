@@ -15,7 +15,6 @@ const CenterForm = ({ center = null, onSuccess }) => {
     name: "",
     verificationCode: "",
     centerAdminEmail: "",
-    phone: "",
     proxy: {
       provider: "smartproxy",
       username: "",
@@ -49,7 +48,6 @@ const CenterForm = ({ center = null, onSuccess }) => {
         name: center.name || "",
         verificationCode: center.verificationCode || "",
         centerAdminEmail: center.centerAdminEmail || "",
-        phone: center.phone || "",
         proxy: {
           provider: center.proxy?.provider || "decodo",
           username: center.proxy?.username || "",
@@ -245,15 +243,6 @@ const handleSubmit = async (e) => {
                 />
               </Form.Group>
 
-              <Form.Group className="mb-3">
-                <Form.Label>Phone</Form.Label>
-                <Form.Control
-                  type="text"
-                  value={formData.phone}
-                  onChange={(e) => handleChange("phone", e.target.value)}
-                  placeholder="Enter phone number"
-                />
-              </Form.Group>
             </Card.Body>
           </Card>
         </Col>

@@ -100,8 +100,34 @@ const CampaignFormPage = () => {
 
   const dncBlocked = !!phoneCheck.result?.blocked;
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const isEmailField = (f) =>
+    f.type === "email" || /email/i.test(f.name) || /e-?mail/i.test(f.label || "");
+  const isPhoneField = (f) => f.name === "phone" || /phone/i.test(f.name);
+  const isZipField = (f) => /^zip/i.test(f.name) || /zip/i.test(f.label || "");
+
+  // Returns a per-field format error string, or null if the field is valid.
+  const fieldFormatError = (f, raw) => {
+    const value = (raw ?? "").toString().trim();
+    if (!value) return f.required ? `${f.label || f.name} is required` : null;
+    if (isEmailField(f) && !EMAIL_RE.test(value)) return "Enter a valid email address";
+    if (isPhoneField(f) && value.replace(/\D/g, "").length !== 10)
+      return "Phone must be 10 digits";
+    if (isZipField(f) && !/^\d{5}$/.test(value)) return "ZIP must be 5 digits";
+    return null;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    // Format validation across all fields before anything else.
+    for (const f of allFields) {
+      const err = fieldFormatError(f, formData[f.name]);
+      if (err) {
+        notifyError(err);
+        return;
+      }
+    }
 
     if (phoneCheck.loading) {
       notifyError("Please wait for the phone number check to finish.");
@@ -120,16 +146,27 @@ const CampaignFormPage = () => {
     );
   };
 
-  // Per-field validation tags. The phone field reflects the live DNC result.
-  const phoneValidation = () => {
-    if (phoneCheck.loading) return { isChecking: true };
-    const r = phoneCheck.result;
-    if (!r || !r.valid) return {};
-    if (r.blocked) {
-      const failed = (r.checks || []).filter((c) => c.listed).map((c) => c.label).join(", ");
-      return { isInvalid: true, tagText: `Blocked: ${failed}`, tagColor: "red" };
+  // Per-field validation tags. The phone field also reflects the live DNC result.
+  const getFieldValidation = (f) => {
+    if (isPhoneField(f)) {
+      if (phoneCheck.loading) return { isChecking: true };
+      const r = phoneCheck.result;
+      if (r?.valid && r.blocked) {
+        const failed = (r.checks || []).filter((c) => c.listed).map((c) => c.label).join(", ");
+        return { isInvalid: true, tagText: `Blocked: ${failed}`, tagColor: "red" };
+      }
+      const value = (formData[f.name] || "").replace(/\D/g, "");
+      if (value && value.length !== 10)
+        return { isInvalid: true, tagText: "Phone must be 10 digits", tagColor: "red" };
+      if (r?.valid && !r.blocked) return { isValid: true, tagText: "Passed DNC", tagColor: "green" };
+      return {};
     }
-    return { isValid: true, tagText: "Passed DNC", tagColor: "green" };
+    const value = formData[f.name];
+    if (value) {
+      const err = fieldFormatError(f, value);
+      if (err) return { isInvalid: true, tagText: err, tagColor: "red" };
+    }
+    return {};
   };
 
   if (loading) return <div>Loading form…</div>;
@@ -189,7 +226,7 @@ const CampaignFormPage = () => {
                   value={formData[field.name] || ""}
                   onChange={handleChange}
                   options={field.name === "state" ? usStates : []}
-                  validation={field.name === "phone" ? phoneValidation() : {}}
+                  validation={getFieldValidation(field)}
                 />
               ))}
             </Row>

@@ -36,8 +36,10 @@ import {
   Mail,
   Calendar,
   Building,
+  Copy,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { notifySuccess, notifyError } from "../../../utils/Notifications";
 import { getAllCampaigns } from "../../../store/slices/campaignSlice";
 
 const UsersList = () => {
@@ -414,15 +416,49 @@ const UserFormPage = () => {
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }));
   };
 
+  // Generate a strong password, fill both fields, and copy it to the clipboard
+  // so the admin can hand it to the user. Works in create and edit modes.
+  const generateAndCopyPassword = async () => {
+    const charset =
+      "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+    let pwd = "";
+    const bytes = new Uint32Array(14);
+    (window.crypto || window.msCrypto).getRandomValues(bytes);
+    for (let i = 0; i < bytes.length; i++) pwd += charset[bytes[i] % charset.length];
+    setFormData((prev) => ({ ...prev, password: pwd, confirmPassword: pwd }));
+    setErrors((prev) => ({ ...prev, password: undefined, confirmPassword: undefined }));
+    try {
+      await navigator.clipboard.writeText(pwd);
+      notifySuccess("Password generated and copied to clipboard");
+    } catch {
+      notifySuccess("Password generated");
+    }
+  };
+
+  const copyPassword = async () => {
+    if (!formData.password) {
+      notifyError("No password to copy");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(formData.password);
+      notifySuccess("Password copied to clipboard");
+    } catch {
+      notifyError("Unable to access clipboard");
+    }
+  };
+
   const validateForm = () => {
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = "Name is required";
     if (!formData.email.trim()) newErrors.email = "Email is required";
     if (!/\S+@\S+\.\S+/.test(formData.email))
       newErrors.email = "Email is invalid";
-    if (!isEditMode) {
+    // Password is required on create; on edit it is optional but, when provided,
+    // must still meet the length and confirmation rules.
+    if (!isEditMode || formData.password) {
       if (!formData.password) newErrors.password = "Password is required";
-      if (formData.password.length < 6)
+      else if (formData.password.length < 6)
         newErrors.password = "Password must be at least 6 characters";
       if (formData.password !== formData.confirmPassword)
         newErrors.confirmPassword = "Passwords do not match";
@@ -619,15 +655,37 @@ const UserFormPage = () => {
                 )}
 
                 {/* Password */}
-                {(!isEditMode || formData.password) && (
+                {(
                   <Row>
                     <Col md={6}>
                       <Form.Group className="mb-3">
-                        <Form.Label>
-                          {isEditMode ? "New Password" : "Password *"}
-                        </Form.Label>
+                        <div className="d-flex justify-content-between align-items-center">
+                          <Form.Label className="mb-1">
+                            {isEditMode ? "New Password" : "Password *"}
+                          </Form.Label>
+                          <div className="d-flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={generateAndCopyPassword}
+                            >
+                              Generate
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={copyPassword}
+                              disabled={!formData.password}
+                              title="Copy password"
+                            >
+                              <Copy size={14} />
+                            </Button>
+                          </div>
+                        </div>
                         <Form.Control
-                          type="password"
+                          type="text"
                           name="password"
                           value={formData.password}
                           onChange={handleChange}

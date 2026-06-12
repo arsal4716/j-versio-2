@@ -8,12 +8,25 @@ import {
 } from "../../../store/slices/submitFormSlice";
 import WhiteHeader from "../../layout/WhiteHeader";
 import LeftPanel from "../../Auth/LeftPanel";
-import { Row, Form, Button, Card, Spinner, Alert } from "react-bootstrap";
+import { Row, Form, Button, Card, Spinner, Alert, ProgressBar } from "react-bootstrap";
 import SubmissionForm from "./SubmissionForm";
 import { notifySuccess, notifyError } from "../../../utils/Notifications";
 import { usStates } from "../../../utils/usStates";
 import useDebouncedValue from "../../../hooks/useDebouncedValue";
 import { dncService } from "../../../services/dncService";
+
+const ResultRow = ({ label, value }) => (
+  <div className="d-flex justify-content-between">
+    <span className="fw-medium">{label}:</span>
+    {value ? (
+      <span className="text-break ms-2" style={{ maxWidth: "70%", textAlign: "right" }}>
+        {value}
+      </span>
+    ) : (
+      <span className="text-warning ms-2">Not captured</span>
+    )}
+  </div>
+);
 
 const CampaignFormPage = () => {
   const { centerId, campaignName } = useParams();
@@ -73,18 +86,17 @@ const CampaignFormPage = () => {
 
     if (submissionState.success) {
       notifySuccess(submissionState.message);
+      // Clear the inputs for the next lead but keep the result panel
+      // (submissionState.data) visible until the next submission starts.
       setFormData({});
       setTimeSpent(0);
     } else if (submissionState.error) {
       notifyError(submissionState.message);
     }
-
-    dispatch(resetSubmissionState());
   }, [
     submissionState.message,
     submissionState.success,
     submissionState.error,
-    dispatch,
   ]);
 
   const handleChange = (e) => {
@@ -100,8 +112,34 @@ const CampaignFormPage = () => {
 
   const dncBlocked = !!phoneCheck.result?.blocked;
 
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const isEmailField = (f) =>
+    f.type === "email" || /email/i.test(f.name) || /e-?mail/i.test(f.label || "");
+  const isPhoneField = (f) => f.name === "phone" || /phone/i.test(f.name);
+  const isZipField = (f) => /^zip/i.test(f.name) || /zip/i.test(f.label || "");
+
+  // Returns a per-field format error string, or null if the field is valid.
+  const fieldFormatError = (f, raw) => {
+    const value = (raw ?? "").toString().trim();
+    if (!value) return f.required ? `${f.label || f.name} is required` : null;
+    if (isEmailField(f) && !EMAIL_RE.test(value)) return "Enter a valid email address";
+    if (isPhoneField(f) && value.replace(/\D/g, "").length !== 10)
+      return "Phone must be 10 digits";
+    if (isZipField(f) && !/^\d{5}$/.test(value)) return "ZIP must be 5 digits";
+    return null;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    // Format validation across all fields before anything else.
+    for (const f of allFields) {
+      const err = fieldFormatError(f, formData[f.name]);
+      if (err) {
+        notifyError(err);
+        return;
+      }
+    }
 
     if (phoneCheck.loading) {
       notifyError("Please wait for the phone number check to finish.");
@@ -120,16 +158,27 @@ const CampaignFormPage = () => {
     );
   };
 
-  // Per-field validation tags. The phone field reflects the live DNC result.
-  const phoneValidation = () => {
-    if (phoneCheck.loading) return { isChecking: true };
-    const r = phoneCheck.result;
-    if (!r || !r.valid) return {};
-    if (r.blocked) {
-      const failed = (r.checks || []).filter((c) => c.listed).map((c) => c.label).join(", ");
-      return { isInvalid: true, tagText: `Blocked: ${failed}`, tagColor: "red" };
+  // Per-field validation tags. The phone field also reflects the live DNC result.
+  const getFieldValidation = (f) => {
+    if (isPhoneField(f)) {
+      if (phoneCheck.loading) return { isChecking: true };
+      const r = phoneCheck.result;
+      if (r?.valid && r.blocked) {
+        const failed = (r.checks || []).filter((c) => c.listed).map((c) => c.label).join(", ");
+        return { isInvalid: true, tagText: `Blocked: ${failed}`, tagColor: "red" };
+      }
+      const value = (formData[f.name] || "").replace(/\D/g, "");
+      if (value && value.length !== 10)
+        return { isInvalid: true, tagText: "Phone must be 10 digits", tagColor: "red" };
+      if (r?.valid && !r.blocked) return { isValid: true, tagText: "Passed DNC", tagColor: "green" };
+      return {};
     }
-    return { isValid: true, tagText: "Passed DNC", tagColor: "green" };
+    const value = formData[f.name];
+    if (value) {
+      const err = fieldFormatError(f, value);
+      if (err) return { isInvalid: true, tagText: err, tagColor: "red" };
+    }
+    return {};
   };
 
   if (loading) return <div>Loading form…</div>;
@@ -180,6 +229,45 @@ const CampaignFormPage = () => {
             :{(timeSpent % 60).toString().padStart(2, "0")}
           </p>
 
+          {submissionState.loading && (
+            <Card className="mb-3 border-primary">
+              <Card.Body className="text-center">
+                <div className="d-flex align-items-center justify-content-center mb-2">
+                  <Spinner animation="border" size="sm" className="me-2" />
+                  <span className="fw-bold">Form Queued</span>
+                </div>
+                <ProgressBar
+                  now={submissionState.progress || 5}
+                  animated
+                  striped
+                  className="mb-2"
+                />
+                <div className="text-muted">
+                  {submissionState.phase || "Submitting…"}
+                </div>
+                <small className="text-muted">
+                  Elapsed: {Math.floor(timeSpent / 60).toString().padStart(2, "0")}:
+                  {(timeSpent % 60).toString().padStart(2, "0")} — you can keep this
+                  tab open; the result will appear here automatically.
+                </small>
+              </Card.Body>
+            </Card>
+          )}
+
+          {!submissionState.loading && submissionState.success && submissionState.data && (
+            <Alert variant="success" className="mb-3" onClose={() => dispatch(resetSubmissionState())} dismissible>
+              <div className="fw-bold mb-2">Submission Result</div>
+              <div className="d-flex flex-column gap-1">
+                <ResultRow label="IP Address" value={submissionState.data.ipAddress} />
+                <ResultRow label="Jornaya Lead ID" value={submissionState.data.leadId} />
+                {submissionState.data.placeId ? (
+                  <ResultRow label="Place ID" value={submissionState.data.placeId} />
+                ) : null}
+                <ResultRow label="TrustedForm" value={submissionState.data.trustedForm} />
+              </div>
+            </Alert>
+          )}
+
           <Form onSubmit={handleSubmit}>
             <Row>
               {allFields.map((field) => (
@@ -189,7 +277,7 @@ const CampaignFormPage = () => {
                   value={formData[field.name] || ""}
                   onChange={handleChange}
                   options={field.name === "state" ? usStates : []}
-                  validation={field.name === "phone" ? phoneValidation() : {}}
+                  validation={getFieldValidation(field)}
                 />
               ))}
             </Row>

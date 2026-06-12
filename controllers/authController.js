@@ -2,6 +2,7 @@ import { validationResult } from "express-validator";
 import { registerUser, loginUser } from "../services/authService.js";
 import { success, fail } from "../utils/response.js";
 import { STATUS_CODES } from "../config/constants.js";
+import { audit } from "../services/auditService.js";
 
 export const register = async (req, res, next) => {
   try {
@@ -57,6 +58,15 @@ export const login = async (req, res, next) => {
 
     const { email, password } = req.body;
     const result = await loginUser({ email, password });
+
+    audit({
+      req,
+      actor: result.user,
+      action: "user.login",
+      entity: "User",
+      entityId: result.user?._id,
+      message: `${result.user?.email} logged in`,
+    });
 
     return success(res, {
       message: "Login successful",

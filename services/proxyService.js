@@ -1,8 +1,18 @@
 // backend/services/proxyService.js
 import axios from "axios";
 import { HttpsProxyAgent } from "https-proxy-agent";
-import { ValidationError, BrowserError } from "../utils/errorTypes.js";
+import { ValidationError, BrowserError, ProxyError } from "../utils/errorTypes.js";
 import logger from "../utils/logger.js";
+
+// A 407 from the upstream proxy means the proxy account/package can no longer
+// authenticate (typically expired or out of bandwidth). Surfaced to the agent
+// as a clear, actionable message rather than a generic failure.
+const PROXY_EXPIRED_MESSAGE = "Proxy package expired. Please renew.";
+function isProxyAuthError(err) {
+  if (err?.response?.status === 407) return true;
+  const msg = String(err?.message || "");
+  return /\b407\b/.test(msg) || /proxy authentication required/i.test(msg);
+}
 
 const zipCodePorts = [
   10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012,
@@ -55,11 +65,18 @@ function getDecodoIpCheckUrl() {
 
 async function verifyProxyIp(proxyUrl, ipCheckUrl) {
   const agent = new HttpsProxyAgent(proxyUrl);
-  const res = await axios.get(ipCheckUrl, {
-    httpsAgent: agent,
-    timeout: 20000,
-  });
-  return res?.data?.proxy?.ip ? res.data.proxy.ip : null;
+  try {
+    const res = await axios.get(ipCheckUrl, {
+      httpsAgent: agent,
+      timeout: 20000,
+    });
+    return res?.data?.proxy?.ip ? res.data.proxy.ip : null;
+  } catch (err) {
+    if (isProxyAuthError(err)) {
+      throw new ProxyError(PROXY_EXPIRED_MESSAGE);
+    }
+    throw err;
+  }
 }
 
 const statePortMapping = {
@@ -286,6 +303,9 @@ class ProxyService {
             zipCode,
           };
         } catch (e) {
+          // An expired/unauthorized proxy account will not be fixed by the state
+          // fallback (same credentials) — surface it immediately.
+          if (e?.code === "PROXY_ERROR") throw e;
           logger.warn("ZIP proxy failed, falling back to state proxy", {
             zipCode,
             error: e?.message,
@@ -351,6 +371,7 @@ class ProxyService {
           statePort,
         };
       } catch (e) {
+        if (e?.code === "PROXY_ERROR") throw e;
         lastErr = e;
         logger.warn("STATE proxy candidate failed", {
           stateName,

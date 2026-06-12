@@ -5,6 +5,13 @@ import Center from "../models/Center.js";
 import User from "../models/User.js";
 import { success, fail } from "../utils/response.js";
 import { STATUS_CODES } from "../config/constants.js";
+import { audit } from "../services/auditService.js";
+import { saveServiceAccountKey } from "../utils/storage.js";
+
+// Escapes a string for safe use inside a RegExp (used for case-insensitive
+// exact-match uniqueness checks).
+const escapeRegex = (s = "") => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const exactCI = (value) => new RegExp(`^${escapeRegex(String(value).trim())}$`, "i");
 
 export const createCenter = async (req, res, next) => {
   try {
@@ -12,8 +19,6 @@ export const createCenter = async (req, res, next) => {
       name,
       verificationCode,
       centerAdminEmail,
-      contactPerson,
-      phone,
       proxy,
       googleSheets,
       settings,
@@ -27,6 +32,22 @@ export const createCenter = async (req, res, next) => {
     if (typeof req.body.campaigns === "string")
       req.body.campaigns = JSON.parse(req.body.campaigns);
 
+    if (!name || !String(name).trim()) {
+      return fail(res, {
+        message: "Center name is required",
+        status: STATUS_CODES.BAD_REQUEST,
+      });
+    }
+
+    // Center name must be globally unique (case-insensitive).
+    const nameTaken = await Center.findOne({ name: exactCI(name) });
+    if (nameTaken) {
+      return fail(res, {
+        message: "A center with this name already exists",
+        status: STATUS_CODES.BAD_REQUEST,
+      });
+    }
+
     const existingCenter = await Center.findOne({ verificationCode });
     if (existingCenter) {
       return fail(res, {
@@ -38,19 +59,14 @@ export const createCenter = async (req, res, next) => {
     let clientKeyFilePath = null;
 
     if (req.file) {
-      const folderPath = path.join("sheets", verificationCode);
-      fs.mkdirSync(folderPath, { recursive: true });
-      const filePath = path.join(folderPath, "client-key.json");
-      fs.renameSync(req.file.path, filePath);
-      clientKeyFilePath = filePath;
+      // Validates JSON and stores at storage/centers/{name}/google-key.json.
+      clientKeyFilePath = saveServiceAccountKey(name, req.file.path);
     }
 
     const center = new Center({
-      name,
+      name: String(name).trim(),
       verificationCode,
       centerAdminEmail,
-      contactPerson,
-      phone,
       proxy: {
         provider: proxy?.provider || "decodo",
         username: proxy?.username,
@@ -82,29 +98,67 @@ export const createCenter = async (req, res, next) => {
     await center.save();
 
     // Per spec: creating a center automatically provisions its admin account.
-    // Login = centerAdminEmail / verificationCode. Idempotent: skip if the user
-    // already exists (e.g. re-running against an existing email).
-    let adminUser = null;
-    const existingAdmin = await User.findOne({ email: centerAdminEmail });
-    if (!existingAdmin) {
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(String(verificationCode), salt);
-      adminUser = await User.create({
-        name: `${name} Admin`,
-        company: name,
-        email: centerAdminEmail,
-        password: hashedPassword,
-        roles: ["admin"],
-        centerId: center._id,
-        allowedCampaigns: (center.campaigns || []).map((c) => c.name),
+    // Login = centerAdminEmail / verificationCode. This must never leave an
+    // orphan: if admin provisioning fails after the center is saved, we roll the
+    // center back so the operator can retry cleanly.
+    let adminCreated = false;
+    try {
+      const campaignNames = (center.campaigns || []).map((c) => c.name);
+      const existingAdmin = await User.findOne({ email: centerAdminEmail });
+
+      if (!existingAdmin) {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(String(verificationCode), salt);
+        await User.create({
+          name: `${name} Admin`,
+          company: name,
+          email: centerAdminEmail,
+          password: hashedPassword,
+          roles: ["admin"],
+          centerId: center._id,
+          allowedCampaigns: campaignNames,
+        });
+        adminCreated = true;
+      } else {
+        // Repair an unlinked / passwordless admin so the account is usable.
+        const repair = {};
+        if (!existingAdmin.centerId) repair.centerId = center._id;
+        if (!Array.isArray(existingAdmin.roles) || !existingAdmin.roles.includes("admin")) {
+          repair.roles = [...new Set([...(existingAdmin.roles || []), "admin"])];
+        }
+        if (!existingAdmin.password) {
+          const salt = await bcrypt.genSalt(10);
+          repair.password = await bcrypt.hash(String(verificationCode), salt);
+        }
+        if (!existingAdmin.allowedCampaigns?.length && campaignNames.length) {
+          repair.allowedCampaigns = campaignNames;
+        }
+        if (Object.keys(repair).length) {
+          await User.updateOne({ _id: existingAdmin._id }, { $set: repair });
+        }
+      }
+    } catch (adminErr) {
+      await Center.findByIdAndDelete(center._id).catch(() => {});
+      return fail(res, {
+        message: `Failed to provision center admin: ${adminErr.message}`,
+        status: STATUS_CODES.SERVER_ERROR,
       });
     }
+
+    audit({
+      req,
+      centerId: center._id,
+      action: "center.create",
+      entity: "Center",
+      entityId: center._id,
+      message: `Center "${center.name}" created`,
+    });
 
     return success(res, {
       message: "Center created successfully",
       data: {
         center,
-        adminCreated: !!adminUser,
+        adminCreated,
         adminEmail: centerAdminEmail,
       },
       status: STATUS_CODES.CREATED,
@@ -216,11 +270,46 @@ export const updateCenter = async (req, res, next) => {
       }
     });
 
+    // A newly-uploaded Google key must be persisted on update too (this was
+    // previously dropped, so re-uploading a key silently did nothing).
+    if (req.file) {
+      const savedPath = saveServiceAccountKey(req.body.name || center.name, req.file.path);
+      req.body.googleSheets = {
+        ...(center.googleSheets?.toObject?.() || center.googleSheets || {}),
+        ...(req.body.googleSheets || {}),
+        clientKeyFile: savedPath,
+      };
+    }
+
+    // Enforce globally-unique center name on rename (case-insensitive).
+    if (req.body.name && String(req.body.name).trim() !== center.name) {
+      const clash = await Center.findOne({
+        _id: { $ne: center._id },
+        name: exactCI(req.body.name),
+      });
+      if (clash) {
+        return fail(res, {
+          message: "A center with this name already exists",
+          status: STATUS_CODES.BAD_REQUEST,
+        });
+      }
+      req.body.name = String(req.body.name).trim();
+    }
+
     const updatedCenter = await Center.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
       { new: true, runValidators: true },
     ).populate("createdBy", "name centerAdminEmail");
+
+    audit({
+      req,
+      centerId: updatedCenter._id,
+      action: "center.update",
+      entity: "Center",
+      entityId: updatedCenter._id,
+      message: `Center "${updatedCenter.name}" updated`,
+    });
 
     return success(res, {
       message: "Center updated successfully",
@@ -250,6 +339,15 @@ export const deleteCenter = async (req, res, next) => {
     }
 
     await Center.findByIdAndDelete(req.params.id);
+
+    audit({
+      req,
+      centerId: center._id,
+      action: "center.delete",
+      entity: "Center",
+      entityId: center._id,
+      message: `Center "${center.name}" deleted`,
+    });
 
     return success(res, {
       message: "Center deleted successfully",

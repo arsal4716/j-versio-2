@@ -83,6 +83,18 @@ function buildRowFromFormSetup(
   return row;
 }
 
+// The single global super-admin service-account key. Usable as a fallback for
+// any center that has not uploaded its own key (env override supported).
+const globalKeyFile = () =>
+  process.env.GOOGLE_GLOBAL_KEY_FILE || "storage/global/google-key.json";
+
+function sanitizeCenterName(name) {
+  return String(name || "")
+    .replace(/[^a-zA-Z0-9-_ ]/g, "")
+    .trim()
+    .replace(/\s+/g, "_");
+}
+
 function resolveCenterKeyFile(center) {
   const gs = center?.googleSheets || {};
   const direct = gs.clientKeyFile;
@@ -91,12 +103,22 @@ function resolveCenterKeyFile(center) {
 
   const code = String(center?.verificationCode || "").trim();
   const name = String(center?.name || "").trim();
+  const safeName = sanitizeCenterName(name);
 
+  // Canonical location written by the upload flow.
+  const byStorage = safeName ? `storage/centers/${safeName}/google-key.json` : null;
+  if (byStorage && fileExists(byStorage)) return byStorage;
+
+  // Legacy locations (backward compatibility).
   const byCode = code ? `sheets/${code}/client-key.json` : null;
   if (byCode && fileExists(byCode)) return byCode;
 
   const byName = name ? `sheets/${name}/client-key.json` : null;
   if (byName && fileExists(byName)) return byName;
+
+  // Global super-admin key fallback so every center can sync without its own key.
+  const global = globalKeyFile();
+  if (fileExists(global)) return global;
 
   return null;
 }

@@ -26,6 +26,7 @@ const submissionLogSchema = new mongoose.Schema(
     },
     metadata: {
       leadId: String,
+      placeId: String,
       trustedForm: String,
       ipAddress: String,
       proxyIp: String,

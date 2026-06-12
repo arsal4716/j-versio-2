@@ -16,6 +16,7 @@ const Layout = ({ children }) => {
     location.pathname.startsWith('/users') ||
     location.pathname.startsWith('/super-admin') ||
     location.pathname.startsWith('/portal/records') ||
+    location.pathname.startsWith('/logs') ||
     location.pathname.startsWith('/settings');
 
   const showVideoBg = !isAdminRoute && 

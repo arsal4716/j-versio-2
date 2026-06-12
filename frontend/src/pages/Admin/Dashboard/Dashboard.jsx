@@ -3,7 +3,7 @@ import { Card, Row, Col, Container, Badge, Table, Spinner } from 'react-bootstra
 import { useDispatch, useSelector } from 'react-redux';
 import { getCenters } from '../../../store/slices/centerSlice';
 import { Building, Activity, FileText, Users, TrendingUp } from 'lucide-react';
-import { formSetupService } from '../../../services/formSetupService';
+import API from '../../../services/api';
 
 const AdminDashboard = () => {
   const dispatch = useDispatch();
@@ -18,34 +18,24 @@ const AdminDashboard = () => {
   });
 
   useEffect(() => {
+    // Recent-centers table (single small page) + one count-only stats call.
     dispatch(getCenters({ page: 1, limit: 5 }));
     fetchStats();
   }, [dispatch]);
 
   const fetchStats = async () => {
     try {
-      const centersRes = await dispatch(getCenters({ page: 1, limit: 1 }));
-      const totalCenters = centersRes.payload?.total || 0;
-      
-      let totalCampaigns = 0;
-      if (centersRes.payload?.centers) {
-        totalCampaigns = centersRes.payload.centers.reduce((acc, center) => 
-          acc + (center.campaigns?.length || 0), 0);
-      }      const formSetupsRes = await formSetupService.getAll();
-      const totalFormSetups = formSetupsRes.data?.total || 0;
-
-  
-
+      const res = await API.get('/dashboard/stats');
+      const d = res.data?.data || {};
       setStats({
-        totalCenters,
-        totalCampaigns,
-        totalFormSetups,
-        totalUsers: 0, 
-        loading: false
+        totalCenters: d.totalCenters || 0,
+        totalCampaigns: d.totalCampaigns || 0,
+        totalFormSetups: d.totalFormSetups || 0,
+        totalUsers: d.totalUsers || 0,
+        loading: false,
       });
     } catch (error) {
-      console.error('Error fetching stats:', error);
-      setStats(prev => ({ ...prev, loading: false }));
+      setStats((prev) => ({ ...prev, loading: false }));
     }
   };
 

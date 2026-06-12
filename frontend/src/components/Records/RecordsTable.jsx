@@ -1,15 +1,16 @@
 // frontend/src/components/Records/RecordsTable.jsx
 import React from "react";
 import { Table } from "antd";
+import { formatEST } from "../../utils/formatDate";
 
 export default function RecordsTable({ items = [], loading, apiConfigs = [] }) {
   const columns = [
     {
-      title: "Created At",
+      title: "Created At (EST)",
       dataIndex: "createdAt",
       key: "createdAt",
       width: 200,
-      render: (v) => new Date(v).toLocaleString(),
+      render: (v) => formatEST(v),
     },
     {
       title: "User",

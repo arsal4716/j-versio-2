@@ -100,15 +100,23 @@ async function resolveEffectiveSettings(centerId, campaignName) {
 async function runBlacklistAlliance(phone, cfg) {
   const endpoint = (cfg.endpoint || "https://api.blacklistalliance.net/lookup").trim();
   const res = await axios.get(endpoint, {
-    params: { key: cfg.apiKey, phone, ver: "v3", resp: "json" },
+    params: { key: cfg.apiKey, phone },
     timeout: PROVIDER_TIMEOUT_MS,
   });
+  // Documented response shape:
+  //   { status: "success", message: "Good", code: "none", results: 0, scrubs: true }
+  // `results` is a COUNT of matches: 0 = clean, > 0 = listed.
   const data = res.data || {};
-  const results = String(data.results ?? "").toLowerCase();
-  // v3 returns results: "Clean" for safe numbers; anything else (e.g. "Bad",
-  // a wireless/litigator flag, or a non-empty match) is treated as listed.
-  const clean = results === "" || results === "clean" || results === "good";
-  return { listed: !clean, message: data.message || data.results || "checked" };
+  if (String(data.status ?? "").toLowerCase() !== "success") {
+    // Bad key / quota / outage — fail open (do not block on an unusable lookup).
+    throw new Error(data.message || "Lookup not successful");
+  }
+  const count = Number(data.results) || 0;
+  const listed = count > 0;
+  return {
+    listed,
+    message: listed ? `Listed (${count})` : data.message || "Good",
+  };
 }
 
 async function runTcpaLitigator(phone, cfg) {

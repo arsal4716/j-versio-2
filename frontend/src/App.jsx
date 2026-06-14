@@ -24,6 +24,7 @@ import UsersPage from "./pages/Admin/UsersPage/Users";
 import ApiBuilderPage from "./pages/SuperAdmin/ApiBuilder/ApiBuilderPage";
 import RecordsPortalPage from "./pages/Portal/RecordsPortal/RecordsPortal";
 import LogsPage from "./pages/Admin/LogsPage/Logs";
+import Pricing from "./pages/Pricing/Pricing";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -70,6 +71,14 @@ const AnimatedRoutes = () => {
           element={
             <MotionContent>
               <Signup />
+            </MotionContent>
+          }
+        />
+        <Route
+          path="/pricing"
+          element={
+            <MotionContent>
+              <Pricing />
             </MotionContent>
           }
         />

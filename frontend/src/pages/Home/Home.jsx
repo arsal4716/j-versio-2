@@ -23,25 +23,45 @@ const Home = () => {
               </p>
 
               <div className="hero-buttons mb-4">
-                <Button variant="primary" size="md" className="me-3 px-3">
-                  Our Pricing
-                </Button>
-                
-<Link to="/login" style={{ textDecoration: "none" }}>
-  <Button variant="outline-dark" size="md" className="px-3">
-    Login
-  </Button>
-</Link>
+                <Link to="/pricing" style={{ textDecoration: "none" }}>
+                  <Button variant="primary" size="md" className="me-3 px-3">
+                    Our Pricing
+                  </Button>
+                </Link>
+
+                <Link to="/login" style={{ textDecoration: "none" }}>
+                  <Button variant="outline-dark" size="md" className="px-3">
+                    Login
+                  </Button>
+                </Link>
               </div>
 
               <div className="social-links mt-4">
-                <a href="#" className="social-icon mx-3">
+                <a
+                  href="https://www.facebook.com/share/1JSaLU5L23/?mibextid=wwXIfr&ref=1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="social-icon mx-3"
+                  aria-label="Facebook"
+                >
                   <FaFacebookF />
                 </a>
-                <a href="#" className="social-icon mx-3">
+                <a
+                  href="https://www.instagram.com/selectcode.ai?igsh=Y3VleGJzajRhOTNq"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="social-icon mx-3"
+                  aria-label="Instagram"
+                >
                   <FaInstagram />
                 </a>
-                <a href="#" className="social-icon mx-3">
+                <a
+                  href="https://www.linkedin.com/company/selectcodeinc/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="social-icon mx-3"
+                  aria-label="LinkedIn"
+                >
                   <FaLinkedinIn />
                 </a>
               </div>

@@ -23,6 +23,8 @@ async function list(req, res) {
     cursor: req.query.cursor,
     limit: Number(req.query.limit || 15),
     q: req.query.q,
+    // A plain user only sees the leads they personally submitted.
+    userId: isUserOnly ? req.user._id : undefined,
   });
 
   return res.json({ success: true, ...result });

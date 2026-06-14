@@ -48,6 +48,15 @@ export const createCenter = async (req, res, next) => {
       });
     }
 
+    // Verification code is the registration key: a unique 6-digit number per
+    // center. Agents type it on the register page to load that center's campaigns.
+    if (!/^\d{6}$/.test(String(verificationCode || ""))) {
+      return fail(res, {
+        message: "Verification code must be exactly 6 digits",
+        status: STATUS_CODES.BAD_REQUEST,
+      });
+    }
+
     const existingCenter = await Center.findOne({ verificationCode });
     if (existingCenter) {
       return fail(res, {

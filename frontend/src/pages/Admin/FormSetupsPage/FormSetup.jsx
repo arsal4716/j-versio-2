@@ -65,10 +65,9 @@ const FormSetupsPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
 
-  // Load initial data
+  // Load centers once.
   useEffect(() => {
     dispatch(getCenters());
-    loadFormSetups();
   }, [dispatch]);
 
   // Load form setups with filters
@@ -90,11 +89,19 @@ const FormSetupsPage = () => {
     dispatch,
   ]);
 
+  // Re-fetch whenever the filters (center / campaign / search / page) change.
+  // Previously the list only loaded once, so selecting a center or campaign did
+  // nothing — the table kept showing every setup.
+  useEffect(() => {
+    loadFormSetups();
+  }, [loadFormSetups]);
+
   // Handle center change
 const handleCenterChange = (centerId) => {
 
   setSelectedCenter(centerId);
   setSelectedCampaign("");
+  setCurrentPage(1);
   dispatch(clearCampaigns());
 
   const center = centers.find((c) => c._id === centerId);
@@ -110,6 +117,7 @@ const handleCenterChange = (centerId) => {
 
   const handleCampaignChange = (campaignName) => {
   setSelectedCampaign(campaignName);
+  setCurrentPage(1);
 
   if (campaignName && selectedCenter) {
     dispatch(

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Form, Button, Spinner, Alert } from "react-bootstrap";
+import { Form, Button, Spinner, Alert, Modal } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { loginUser, clearError } from "../../store/slices/authSlice";
@@ -18,6 +18,7 @@ const LoginForm = () => {
   // Local copy so the message stays visible even if the store error is cleared
   // elsewhere; it is only reset when the user edits a field or retries.
   const [localError, setLocalError] = useState("");
+  const [showForgot, setShowForgot] = useState(false);
 
   // Clear any stale auth error left over from a previous visit on mount.
   useEffect(() => {
@@ -103,7 +104,15 @@ const LoginForm = () => {
             checked={formData.remember}
             onChange={handleChange}
           />
-          <Link to="/forgot-password">Forgot Password?</Link>
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              setShowForgot(true);
+            }}
+          >
+            Forgot Password?
+          </a>
         </Form.Group>
         <Button
           type="submit"
@@ -117,6 +126,21 @@ const LoginForm = () => {
           Don’t have an account? <Link to="/signup">Sign up</Link>
         </div>
       </Form>
+
+      <Modal show={showForgot} onHide={() => setShowForgot(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title style={{ fontSize: "1.1rem" }}>Reset Password</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          For your account's security, password resets are handled by your
+          administrator. Please ask your admin to reset your password for you.
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="primary" onClick={() => setShowForgot(false)}>
+            Got it
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </>
   );
 };

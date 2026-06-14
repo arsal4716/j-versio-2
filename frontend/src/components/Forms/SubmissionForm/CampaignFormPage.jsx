@@ -101,10 +101,14 @@ const CampaignFormPage = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === "phone") {
+    const lname = (name || "").toLowerCase();
+    // Hard input limits keyed by field semantics (works regardless of the exact
+    // field name the super admin chose): phone = 10 digits, ZIP = 5 digits.
+    const isPhone = lname === "phone" || /phone/.test(lname) || /callerid/.test(lname);
+    const isZip = /^zip/.test(lname) || /zip/.test(lname);
+    if (isPhone) {
       if (!/^\d*$/.test(value) || value.length > 10) return;
-    }
-    if (name === "zipCode") {
+    } else if (isZip) {
       if (!/^\d*$/.test(value) || value.length > 5) return;
     }
     setFormData({ ...formData, [name]: value });

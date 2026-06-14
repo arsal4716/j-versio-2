@@ -10,11 +10,19 @@ export const verifyCenterCode = async (req, res) => {
     if (!center)
       return fail(res, { message: "Invalid code" });
 
+    // Active campaigns are returned here so the (unauthenticated) registration
+    // page can render the allowed-campaign checkboxes without a second, auth-only
+    // request.
+    const campaigns = (center.campaigns || [])
+      .filter((c) => c.isActive !== false)
+      .map((c) => ({ _id: c._id, name: c.name }));
+
     return success(res, {
       message: "Verification successful",
       data: {
         centerId: center._id,
         centerName: center.name,
+        campaigns,
       },
     });
   } catch (err) {

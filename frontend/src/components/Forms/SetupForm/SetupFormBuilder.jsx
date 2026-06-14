@@ -64,12 +64,13 @@ const FieldRow = ({ field, idx, onChange, onRemove }) => (
           </Button>
         </Col>
       </Row>
-      {["select", "radio"].includes(field.type) && (
+      {["select", "radio", "checkbox"].includes(field.type) && (
         <Row className="mt-2">
           <Col>
             <InputGroup>
-              <InputGroup.Text>Options (comma)</InputGroup.Text>
+              <InputGroup.Text>Options (comma separated)</InputGroup.Text>
               <Form.Control
+                placeholder="e.g. Yes, No, Maybe"
                 value={(field.options || []).join(",")}
                 onChange={(e) =>
                   onChange(
@@ -80,6 +81,9 @@ const FieldRow = ({ field, idx, onChange, onRemove }) => (
                 }
               />
             </InputGroup>
+            <Form.Text className="text-muted">
+              These choices appear in the {field.type} on the form.
+            </Form.Text>
           </Col>
         </Row>
       )}
@@ -289,6 +293,29 @@ const SetupFormBuilder = ({
           </Button>
         </Card.Header>
         <Card.Body>
+          <Alert variant="warning" className="small mb-3">
+            <strong>Naming matters — it drives validation.</strong> Use these
+            field <em>names</em> so the form validates correctly:
+            <ul className="mb-0 mt-1">
+              <li>
+                <code>phone</code> — runs the DNC check and enforces a 10-digit
+                number (label it "Phone", "Phone Number", "Caller ID", etc.).
+              </li>
+              <li>
+                <code>state</code> — shown as a US state dropdown automatically.
+              </li>
+              <li>
+                <code>zip</code> or <code>zipcode</code> — enforces a 5-digit ZIP.
+              </li>
+              <li>
+                <code>email</code> (or field type <code>email</code>) — validates
+                the email format.
+              </li>
+            </ul>
+            The <strong>Label</strong> is what the agent sees; the
+            <strong> name</strong> is the internal key used for validation and
+            API mapping.
+          </Alert>
           {form.fields.length === 0 && (
             <Alert variant="info">No fields added yet. Click "Add New Field" to start.</Alert>
           )}

@@ -113,4 +113,148 @@ async function executeApiConfig(apiConfigId, runtime = {}) {
   };
 }
 
-export { executeApiConfig };
+/* ------------------------------------------------------------------ */
+/* Lead-based execution (portal "Data Transfer" buttons)               */
+/* ------------------------------------------------------------------ */
+
+const STATE_ABBR_TO_NAME = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas",
+  KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts",
+  MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+  NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+  NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma",
+  OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+  SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+  VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+};
+const STATE_NAME_TO_ABBR = Object.fromEntries(
+  Object.entries(STATE_ABBR_TO_NAME).map(([abbr, name]) => [name.toLowerCase(), abbr])
+);
+
+function formatState(value, format) {
+  const raw = String(value ?? "").trim();
+  if (!raw || !format) return raw;
+  if (format === "abbr") {
+    if (/^[A-Za-z]{2}$/.test(raw)) return raw.toUpperCase();
+    return STATE_NAME_TO_ABBR[raw.toLowerCase()] || raw;
+  }
+  // full
+  if (/^[A-Za-z]{2}$/.test(raw)) return STATE_ABBR_TO_NAME[raw.toUpperCase()] || raw;
+  return raw;
+}
+
+// Builds the system field values available to mappings from a SubmissionLog.
+function buildSystemValues(record) {
+  const meta = record?.metadata || {};
+  const created = record?.createdAt ? new Date(record.createdAt).toISOString() : "";
+  return {
+    jornaya_lead_id: meta.leadId || "",
+    trustedform: meta.trustedForm || "",
+    ip_address: meta.ipAddress || "",
+    place_id: meta.placeId || "",
+    page_url: meta.pageUrl || "",
+    device_type: meta.deviceType || "",
+    created_date: created,
+    original_lead_submit_date: created,
+  };
+}
+
+// Resolves a SubmissionLog's formData Map/object into a plain object.
+function formDataToObject(record) {
+  const fd = record?.formData;
+  if (!fd) return {};
+  if (fd instanceof Map) return Object.fromEntries(fd);
+  if (typeof fd.toObject === "function") return fd.toObject();
+  return { ...fd };
+}
+
+/**
+ * Execute an API config for a specific lead (SubmissionLog record). Resolves the
+ * configured field mappings (form / system / custom) and returns BOTH the exact
+ * request that was sent and the response — so the portal can show the operator
+ * precisely what was transmitted.
+ */
+async function executeApiConfigForLead(cfg, record, customValues = {}) {
+  if (!isSafeUrl(cfg.endpointUrl)) {
+    throw new Error("Unsafe endpointUrl blocked by SSRF guard");
+  }
+
+  const formData = formDataToObject(record);
+  const systemValues = buildSystemValues(record);
+
+  const headers = { ...kvToObject(cfg.headers), ...buildAuthHeaders(cfg.authType, cfg.authConfig) };
+  let params = applyAuthQueryParams(cfg.authType, cfg.authConfig, kvToObject(cfg.queryParams));
+  const body = {};
+
+  const mappings = Array.isArray(cfg.fieldMappings) ? cfg.fieldMappings.filter((m) => m?.enabled !== false && m?.apiKey) : [];
+
+  if (mappings.length) {
+    for (const m of mappings) {
+      let value = "";
+      if (m.source === "form") value = formData[m.sourceKey] ?? "";
+      else if (m.source === "system") value = systemValues[m.sourceKey] ?? "";
+      else if (m.source === "custom") value = customValues[m.apiKey] ?? "";
+      if (m.stateFormat) value = formatState(value, m.stateFormat);
+      if (m.location === "query") params[m.apiKey] = String(value ?? "");
+      else body[m.apiKey] = value;
+    }
+  } else {
+    // No explicit mapping configured yet: send the raw form data + key system
+    // fields so the button is still useful and shows what would be transmitted.
+    Object.assign(body, formData, {
+      jornaya_lead_id: systemValues.jornaya_lead_id,
+      trustedform: systemValues.trustedform,
+      ip_address: systemValues.ip_address,
+    });
+  }
+
+  // Custom fields the agent entered at runtime (those not already mapped).
+  for (const cf of cfg.customFields || []) {
+    if (!cf?.key) continue;
+    if (Object.prototype.hasOwnProperty.call(customValues, cf.key)) {
+      const val = customValues[cf.key];
+      if (cf.location === "query") params[cf.key] = String(val ?? "");
+      else body[cf.key] = val;
+    }
+  }
+
+  const hasBody = ["POST", "PUT", "PATCH", "DELETE"].includes(cfg.method);
+  if (hasBody && cfg.bodyType === "json") {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  }
+
+  const axiosConfig = {
+    method: cfg.method,
+    url: cfg.endpointUrl,
+    headers,
+    params,
+    data: hasBody ? body : undefined,
+    timeout: cfg.timeout,
+    validateStatus: () => true,
+  };
+
+  const startedAt = Date.now();
+  const res = await requestWithRetry(axiosConfig, cfg.retryCount);
+  const timeMs = Date.now() - startedAt;
+
+  return {
+    request: {
+      method: cfg.method,
+      url: cfg.endpointUrl,
+      headers,
+      params,
+      body: hasBody ? body : null,
+    },
+    response: {
+      status: res.status,
+      ok: res.status >= 200 && res.status < 300,
+      data: res.data,
+      headers: res.headers,
+      timeMs,
+    },
+  };
+}
+
+export { executeApiConfig, executeApiConfigForLead, buildSystemValues };

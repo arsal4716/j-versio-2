@@ -11,6 +11,32 @@ const keyValueSchema = new mongoose.Schema(
     { _id: false }
 );
 
+// One row of the field-mapping table. Maps a value source to the key the buyer's
+// API expects, e.g. { apiKey: "fname", source: "form", sourceKey: "txtFN" }.
+const fieldMappingSchema = new mongoose.Schema(
+    {
+        apiKey: { type: String, trim: true, maxlength: 200 },
+        source: { type: String, enum: ["form", "system", "custom"], default: "form" },
+        sourceKey: { type: String, trim: true, maxlength: 200, default: "" },
+        location: { type: String, enum: ["query", "body"], default: "body" },
+        stateFormat: { type: String, enum: ["", "full", "abbr"], default: "" },
+        enabled: { type: Boolean, default: true },
+    },
+    { _id: false }
+);
+
+// An API-only field the agent fills at runtime (not collected on the lander),
+// e.g. "City" required by a buyer.
+const customFieldSchema = new mongoose.Schema(
+    {
+        key: { type: String, trim: true, maxlength: 200 },
+        label: { type: String, trim: true, maxlength: 200 },
+        location: { type: String, enum: ["query", "body"], default: "body" },
+        required: { type: Boolean, default: false },
+    },
+    { _id: false }
+);
+
 const apiConfigSchema = new mongoose.Schema(
     {
         centerId: {
@@ -25,6 +51,12 @@ const apiConfigSchema = new mongoose.Schema(
             required: true,
             index: true,
         },
+        // Denormalized campaign name so the records portal (which works in
+        // campaign names, not Campaign _ids) can list a campaign's APIs.
+        campaignName: { type: String, trim: true, default: "", index: true },
+
+        fieldMappings: { type: [fieldMappingSchema], default: [] },
+        customFields: { type: [customFieldSchema], default: [] },
 
         apiName: { type: String, required: true, trim: true, maxlength: 120 },
         method: {

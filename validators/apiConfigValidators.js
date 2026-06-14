@@ -8,9 +8,28 @@ const keyValue = Joi.object({
   secret: Joi.boolean().default(false),
 });
 
+const fieldMapping = Joi.object({
+  apiKey: Joi.string().trim().max(200).allow(""),
+  source: Joi.string().valid("form", "system", "custom").default("form"),
+  sourceKey: Joi.string().trim().max(200).allow("").default(""),
+  location: Joi.string().valid("query", "body").default("body"),
+  stateFormat: Joi.string().valid("", "full", "abbr").default(""),
+  enabled: Joi.boolean().default(true),
+});
+
+const customField = Joi.object({
+  key: Joi.string().trim().max(200).allow(""),
+  label: Joi.string().trim().max(200).allow(""),
+  location: Joi.string().valid("query", "body").default("body"),
+  required: Joi.boolean().default(false),
+});
+
 const createApiConfigSchema = Joi.object({
   centerId: Joi.string().hex().length(24).required(),
   campaignId: Joi.string().hex().length(24).required(),
+  campaignName: Joi.string().trim().max(120).allow("").default(""),
+  fieldMappings: Joi.array().items(fieldMapping).default([]),
+  customFields: Joi.array().items(customField).default([]),
   apiName: Joi.string().trim().max(120).required(),
   method: Joi.string().valid("GET", "POST", "PUT", "DELETE", "PATCH").required(),
   endpointUrl: Joi.string().trim().max(5000).required(),
@@ -31,6 +50,9 @@ const createApiConfigSchema = Joi.object({
 });
 
 const updateApiConfigSchema = Joi.object({
+  campaignName: Joi.string().trim().max(120).allow(""),
+  fieldMappings: Joi.array().items(fieldMapping),
+  customFields: Joi.array().items(customField),
   apiName: Joi.string().trim().max(120),
   method: Joi.string().valid("GET", "POST", "PUT", "DELETE", "PATCH"),
   endpointUrl: Joi.string().trim().max(5000),

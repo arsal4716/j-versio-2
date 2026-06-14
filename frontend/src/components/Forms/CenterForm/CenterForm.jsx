@@ -214,17 +214,25 @@ const handleSubmit = async (e) => {
                 <Form.Label>Verification Code *</Form.Label>
                 <Form.Control
                   type="text"
+                  inputMode="numeric"
+                  maxLength={6}
                   value={formData.verificationCode}
                   onChange={(e) =>
                     handleChange(
                       "verificationCode",
-                      e.target.value.toUpperCase()
+                      e.target.value.replace(/\D/g, "").slice(0, 6)
                     )
                   }
                   required
-                  placeholder="Enter unique verification code"
-                  disabled={!!center} 
+                  placeholder="6-digit code (e.g. 482913)"
+                  disabled={!!center}
                 />
+                {!center && (
+                  <Form.Text className="text-muted">
+                    A unique 6-digit code. Agents enter it on the register page to
+                    load this center's campaigns.
+                  </Form.Text>
+                )}
                 {center && (
                   <Form.Text className="text-muted">
                     Verification code cannot be changed after creation

@@ -1,15 +1,17 @@
 // frontend/src/components/Records/RecordsTable.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Table, Button, Modal, Tag, Spin, Typography, Input, message, Descriptions } from "antd";
+import { SwapOutlined } from "@ant-design/icons";
 import { formatEST } from "../../utils/formatDate";
 import { apiConfigService } from "../../services/apiConfigService";
 
 const { Text } = Typography;
 
-// Pulls a value out of the lead's form data by trying a list of candidate keys.
+// Pulls a value out of the lead's form data by trying candidate key fragments.
 function pickFormValue(formData = {}, candidates = []) {
   for (const key of Object.keys(formData)) {
-    if (candidates.some((c) => key.toLowerCase().includes(c))) return formData[key];
+    const lk = key.toLowerCase();
+    if (candidates.some((c) => lk.includes(c))) return formData[key];
   }
   return "";
 }
@@ -69,9 +71,7 @@ function ApiTransferModal({ open, onClose, apiConfig, record }) {
               <Input
                 value={customValues[cf.key] || ""}
                 placeholder={`Enter ${cf.label || cf.key}`}
-                onChange={(e) =>
-                  setCustomValues((p) => ({ ...p, [cf.key]: e.target.value }))
-                }
+                onChange={(e) => setCustomValues((p) => ({ ...p, [cf.key]: e.target.value }))}
               />
             </div>
           ))}
@@ -94,11 +94,7 @@ function ApiTransferModal({ open, onClose, apiConfig, record }) {
 
           <Text strong>Request sent</Text>
           <pre style={preStyle}>
-            {JSON.stringify(
-              { params: result.request.params, body: result.request.body },
-              null,
-              2
-            )}
+            {JSON.stringify({ params: result.request.params, body: result.request.body }, null, 2)}
           </pre>
 
           <Text strong>Response</Text>
@@ -120,64 +116,60 @@ const preStyle = {
   marginBottom: 12,
 };
 
-export default function RecordsTable({ items = [], loading, apiConfigs = [], fieldLabels = {} }) {
-  const [activeApi, setActiveApi] = useState(null); // { apiConfig, record }
+export default function RecordsTable({
+  items = [],
+  loading,
+  apiConfigs = [],
+  fieldLabels = {},
+  expandAll = false,
+}) {
+  const [activeApi, setActiveApi] = useState(null);
+  const [expandedKeys, setExpandedKeys] = useState([]);
+
+  // The "Form" toggle expands / collapses every row at once.
+  useEffect(() => {
+    setExpandedKeys(expandAll ? items.map((r) => r._id) : []);
+  }, [expandAll, items]);
 
   const columns = useMemo(
     () => [
+      { title: "Time Stamp", dataIndex: "createdAt", key: "createdAt", width: 190, render: (v) => formatEST(v) },
+      { title: "Page", key: "page", width: 170, ellipsis: true, render: (_, r) => r?.metadata?.pageUrl || "—" },
       {
-        title: "Time Stamp",
-        dataIndex: "createdAt",
-        key: "createdAt",
-        width: 200,
-        render: (v) => formatEST(v),
+        title: "Full Name",
+        key: "fname",
+        width: 130,
+        render: (_, r) =>
+          pickFormValue(r.formData, ["fname", "firstname", "first_name", "first", "fullname", "full_name"]) || "—",
       },
       {
-        title: "Page",
-        key: "page",
-        width: 180,
-        render: (_, r) => r?.metadata?.pageUrl || "—",
+        title: "Last Name",
+        key: "lname",
+        width: 130,
+        render: (_, r) => pickFormValue(r.formData, ["lname", "lastname", "last_name", "last"]) || "—",
       },
+      { title: "Phone Number", key: "phone", width: 140, render: (_, r) => pickFormValue(r.formData, ["phone"]) || "—" },
+      { title: "IP Address", key: "ip", width: 150, ellipsis: true, render: (_, r) => r?.metadata?.ipAddress || "—" },
+      { title: "Trustedform", key: "tf", width: 150, ellipsis: true, render: (_, r) => r?.metadata?.trustedForm || "—" },
+      { title: "Jornaya", key: "jornaya", width: 150, ellipsis: true, render: (_, r) => r?.metadata?.leadId || "—" },
       {
-        title: "Phone Number",
-        key: "phone",
-        width: 150,
-        render: (_, r) => pickFormValue(r.formData, ["phone"]) || "—",
-      },
-      {
-        title: "IP Address",
-        key: "ip",
-        width: 160,
-        render: (_, r) => r?.metadata?.ipAddress || "—",
-      },
-      {
-        title: "Trustedform",
-        key: "tf",
-        width: 160,
-        ellipsis: true,
-        render: (_, r) => r?.metadata?.trustedForm || "—",
-      },
-      {
-        title: "Jornaya",
-        key: "jornaya",
-        width: 160,
-        ellipsis: true,
-        render: (_, r) => r?.metadata?.leadId || "—",
-      },
-      {
-        title: "Data Transfer",
+        title: (
+          <span className="portal-transfer-head">
+            <SwapOutlined /> Data Transfer
+          </span>
+        ),
         key: "transfer",
+        width: 220,
         render: (_, r) =>
           apiConfigs.length === 0 ? (
             <Text type="secondary">No APIs</Text>
           ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
               {apiConfigs.map((api, idx) => (
                 <Button
                   key={api._id}
-                  size="small"
-                  type="primary"
-                  ghost
+                  type="link"
+                  className="portal-dlink"
                   disabled={api.status === "inactive"}
                   onClick={() => setActiveApi({ apiConfig: api, record: r })}
                   title={api.apiName}
@@ -195,11 +187,10 @@ export default function RecordsTable({ items = [], loading, apiConfigs = [], fie
   // Expanded row: every captured form field, shown by its human label.
   const expandedRowRender = (r) => {
     const fd = r.formData || {};
-    const entries = Object.entries(fd);
     return (
       <div style={{ padding: "4px 8px" }}>
         <Descriptions size="small" column={2} bordered>
-          {entries.map(([k, v]) => (
+          {Object.entries(fd).map(([k, v]) => (
             <Descriptions.Item key={k} label={fieldLabels[k] || k}>
               {String(v ?? "")}
             </Descriptions.Item>
@@ -218,14 +209,19 @@ export default function RecordsTable({ items = [], loading, apiConfigs = [], fie
   return (
     <>
       <Table
+        className="portal-table"
         rowKey="_id"
         loading={loading}
         dataSource={items}
         columns={columns}
         pagination={false}
         size="middle"
-        scroll={{ x: 1100 }}
-        expandable={{ expandedRowRender }}
+        scroll={{ x: 1200 }}
+        expandable={{
+          expandedRowRender,
+          expandedRowKeys: expandedKeys,
+          onExpandedRowsChange: (keys) => setExpandedKeys(keys),
+        }}
       />
 
       {activeApi && (

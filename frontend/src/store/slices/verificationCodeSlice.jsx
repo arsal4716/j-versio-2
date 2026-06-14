@@ -19,7 +19,8 @@ const verificationSlice = createSlice({
     loading: false,
     centerId: null,
     centerName: "",
-    verificationCode: null, 
+    verificationCode: null,
+    campaigns: [],
     error: null,
     verified: false,
   },
@@ -27,7 +28,8 @@ const verificationSlice = createSlice({
     resetVerification: (state) => {
       state.centerId = null;
       state.centerName = "";
-      state.verificationCode = null; 
+      state.verificationCode = null;
+      state.campaigns = [];
       state.verified = false;
       state.error = null;
     },
@@ -42,6 +44,7 @@ const verificationSlice = createSlice({
         state.loading = false;
         state.centerId = action.payload.centerId;
         state.centerName = action.payload.centerName;
+        state.campaigns = action.payload.campaigns || [];
         state.verificationCode = action.meta.arg;
         state.verified = true;
       })

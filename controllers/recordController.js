@@ -23,8 +23,10 @@ async function list(req, res) {
     cursor: req.query.cursor,
     limit: Number(req.query.limit || 15),
     q: req.query.q,
-    // A plain user only sees the leads they personally submitted.
+    // A plain user only sees the leads they personally submitted,
+    // and only today's (Eastern) — never previous days.
     userId: isUserOnly ? req.user._id : undefined,
+    todayOnly: isUserOnly,
   });
 
   return res.json({ success: true, ...result });

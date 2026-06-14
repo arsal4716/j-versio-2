@@ -1,0 +1,132 @@
+/* frontend/src/components/Records/RecordsPortal.css */
+
+.portal-wrap {
+  background: linear-gradient(135deg, #eaf0ff 0%, #f3eefe 45%, #fdeef6 100%);
+  min-height: 100vh;
+  padding: 24px 32px;
+}
+
+/* ---- header: tabs + date range + refresh ---- */
+.portal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.portal-tabs .ant-tabs-tab {
+  font-size: 16px;
+  color: #5b6470;
+  padding: 8px 4px;
+}
+.portal-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #2563eb !important;
+  font-weight: 600;
+}
+.portal-tabs .ant-tabs-ink-bar {
+  background: #2563eb;
+  height: 3px;
+  border-radius: 3px;
+}
+.portal-tabs .ant-tabs-top > .ant-tabs-nav::before {
+  border-bottom: none;
+}
+
+.portal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.portal-daterange .ant-picker {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #9333ea 100%);
+  border: none;
+  border-radius: 12px;
+  padding: 8px 16px;
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.25);
+}
+.portal-daterange .ant-picker .ant-picker-input > input,
+.portal-daterange .ant-picker-separator,
+.portal-daterange .ant-picker-suffix {
+  color: #fff !important;
+}
+.portal-daterange .ant-picker .ant-picker-input > input::placeholder {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.portal-refresh.ant-btn {
+  background: #2563eb;
+  border: none;
+  border-radius: 12px;
+  height: 40px;
+  padding: 0 20px;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.25);
+}
+
+/* ---- main card ---- */
+.portal-card {
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(80, 70, 160, 0.08);
+  padding: 22px 24px;
+}
+
+.portal-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.portal-toolbar .portal-search.ant-input-affix-wrapper,
+.portal-toolbar .portal-search.ant-input {
+  background: #f3effe;
+  border: none;
+  border-radius: 10px;
+  width: 240px;
+}
+.portal-pill.ant-btn {
+  background: #f1ecfd;
+  border: none;
+  color: #6d5bd0;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.portal-pill.ant-btn:hover {
+  background: #e7defb;
+  color: #5b46c0;
+}
+
+/* ---- table ---- */
+.portal-table .ant-table {
+  background: transparent;
+}
+.portal-table .ant-table-thead > tr > th {
+  background: #fff;
+  color: #6b7280;
+  font-weight: 600;
+  border-bottom: 1px solid #eef0f6;
+}
+.portal-table .ant-table-tbody > tr:nth-child(even) > td {
+  background: #f7f6fe;
+}
+.portal-table .ant-table-tbody > tr > td {
+  border-bottom: none;
+}
+.portal-dlink.ant-btn {
+  color: #2f6bff;
+  font-weight: 600;
+  padding: 0 8px;
+}
+.portal-dlink.ant-btn[disabled] {
+  color: #b9c0cc;
+}
+.portal-transfer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

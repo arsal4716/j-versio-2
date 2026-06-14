@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Card, Space, Input, DatePicker, Typography, message } from "antd";
+import { Input, DatePicker, Button, Dropdown, message } from "antd";
+import {
+  ReloadOutlined,
+  SearchOutlined,
+  SwapOutlined,
+  FilterOutlined,
+  ProfileOutlined,
+} from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { getCenters } from "../../../store/slices/centerSlice";
 import { fetchRecords, resetRecords } from "../../../store/slices/recordSlice";
@@ -12,8 +19,7 @@ import CenterPicker from "../../../components/Records/CenterPicker";
 import CampaignTabs from "../../../components/Records/CampaignTabs";
 import RecordsTable from "../../../components/Records/RecordsTable";
 import CursorPager from "../../../components/Records/CursorPager";
-
-const { Title } = Typography;
+import "../../../components/Records/RecordsPortal.css";
 
 export default function RecordsPortalPage() {
   const dispatch = useDispatch();
@@ -27,14 +33,19 @@ export default function RecordsPortalPage() {
 
   const roles = user?.roles || [];
   const isSuper = roles.includes("super_admin");
+  const isUserOnly = roles.includes("user") && !roles.includes("admin") && !isSuper;
 
   const [activeCampaignName, setActiveCampaignName] = useState(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 450);
   const [range, setRange] = useState(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
-  // API configs + form-field labels for the active campaign (drives the
-  // "Data Transfer" buttons and the label-mapped expanded rows).
+  // Client-side view controls (Sort / Filter / Form toggle).
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [resultFilter, setResultFilter] = useState("all");
+  const [expandAll, setExpandAll] = useState(false);
+
   const [apiConfigs, setApiConfigs] = useState([]);
   const [fieldLabels, setFieldLabels] = useState({});
 
@@ -43,37 +54,30 @@ export default function RecordsPortalPage() {
     return user?.centerId || null;
   }, [isSuper, tenant.overrideCenterId, user?.centerId]);
 
-  // Always load centers so we can use center.campaigns for tabs
   useEffect(() => {
     dispatch(getCenters());
   }, [dispatch]);
 
-  // Find selected center object
   const selectedCenter = useMemo(() => {
     if (!effectiveCenterId) return null;
     return centers.find((c) => c._id === effectiveCenterId) || null;
   }, [centers, effectiveCenterId]);
 
-  // Build campaigns from selectedCenter.campaigns
   const campaigns = useMemo(() => {
     const list = selectedCenter?.campaigns || [];
-    // show only active campaigns
     return list.filter((c) => c?.isActive !== false);
   }, [selectedCenter]);
 
-  // Default active campaign
   useEffect(() => {
     const first = campaigns?.[0]?.name;
     if (first && !activeCampaignName) setActiveCampaignName(first);
-
-    // if center changed and old campaign no longer exists, reset
     if (activeCampaignName && campaigns.length) {
       const stillExists = campaigns.some((c) => c.name === activeCampaignName);
       if (!stillExists) setActiveCampaignName(campaigns[0].name);
     }
   }, [campaigns, activeCampaignName]);
 
-  // Fetch records whenever campaign/filters change
+  // Fetch records whenever campaign / filters / refresh change.
   useEffect(() => {
     if (!activeCampaignName) return;
 
@@ -86,24 +90,20 @@ export default function RecordsPortalPage() {
       startDate: range?.[0]?.toISOString(),
       endDate: range?.[1]?.toISOString(),
     };
-
-    // super admin can override centerId (backend should support this)
     if (isSuper && effectiveCenterId) params.centerId = effectiveCenterId;
 
     dispatch(fetchRecords(params))
       .unwrap()
       .catch((e) => message.error(String(e)));
-  }, [dispatch, activeCampaignName, debouncedSearch, range, isSuper, effectiveCenterId]);
+  }, [dispatch, activeCampaignName, debouncedSearch, range, isSuper, effectiveCenterId, refreshTick]);
 
-  // Load this campaign's API buttons + form-field labels (name -> label) so the
-  // portal can show real "Data Transfer" buttons and human-readable field names.
+  // API buttons + form-field labels for the active campaign.
   useEffect(() => {
     if (!activeCampaignName || !effectiveCenterId) {
       setApiConfigs([]);
       setFieldLabels({});
       return;
     }
-
     apiConfigService
       .listByCampaign({ centerId: effectiveCenterId, campaignName: activeCampaignName })
       .then((res) => setApiConfigs(res.data.data || []))
@@ -118,11 +118,10 @@ export default function RecordsPortalPage() {
         setFieldLabels(map);
       })
       .catch(() => setFieldLabels({}));
-  }, [activeCampaignName, effectiveCenterId]);
+  }, [activeCampaignName, effectiveCenterId, refreshTick]);
 
   const loadMore = async () => {
     if (!recordState.cursor || !activeCampaignName) return;
-
     const params = {
       campaignName: activeCampaignName,
       limit: 15,
@@ -131,55 +130,117 @@ export default function RecordsPortalPage() {
       startDate: range?.[0]?.toISOString(),
       endDate: range?.[1]?.toISOString(),
     };
-
     if (isSuper && effectiveCenterId) params.centerId = effectiveCenterId;
-
     await dispatch(fetchRecords(params))
       .unwrap()
       .catch((e) => message.error(String(e)));
   };
 
-  return (
-    <div style={{ padding: 16 }}>
-      <Title level={3}>Record Portal</Title>
+  // Apply Sort + Filter to the loaded rows.
+  const displayItems = useMemo(() => {
+    let arr = [...(recordState.items || [])];
+    if (resultFilter !== "all") {
+      arr = arr.filter((r) => (r.result || "success") === resultFilter);
+    }
+    arr.sort((a, b) =>
+      sortOrder === "asc"
+        ? new Date(a.createdAt) - new Date(b.createdAt)
+        : new Date(b.createdAt) - new Date(a.createdAt)
+    );
+    return arr;
+  }, [recordState.items, resultFilter, sortOrder]);
 
-      <Card style={{ marginBottom: 12 }}>
-        <Space wrap style={{ width: "100%" }}>
-          {isSuper ? (
+  const sortMenu = {
+    items: [
+      { key: "desc", label: "Newest first" },
+      { key: "asc", label: "Oldest first" },
+    ],
+    onClick: ({ key }) => setSortOrder(key),
+  };
+
+  const filterMenu = {
+    items: [
+      { key: "all", label: "All results" },
+      { key: "success", label: "Success only" },
+      { key: "failed", label: "Failed only" },
+    ],
+    onClick: ({ key }) => setResultFilter(key),
+  };
+
+  return (
+    <div className="portal-wrap">
+      <div className="portal-header">
+        <div className="portal-tabs" style={{ flex: 1, minWidth: 280 }}>
+          <CampaignTabs
+            campaigns={campaigns}
+            activeKey={activeCampaignName}
+            onChange={(name) => setActiveCampaignName(name)}
+          />
+        </div>
+
+        <div className="portal-header-actions">
+          {isSuper && (
             <CenterPicker
               centers={centers}
               value={tenant.overrideCenterId}
               onChange={(v) => dispatch(setOverrideCenterId(v))}
             />
-          ) : (
-            <div style={{ fontSize: 14, opacity: 0.75 }}>
-              Center locked: {user?.centerId}
-            </div>
           )}
+          <div className="portal-daterange">
+            <DatePicker.RangePicker
+              value={range}
+              onChange={setRange}
+              format="MMM DD, YYYY"
+              disabled={isUserOnly /* user role is locked to today */}
+            />
+          </div>
+          <Button
+            className="portal-refresh"
+            type="primary"
+            icon={<ReloadOutlined />}
+            onClick={() => setRefreshTick((t) => t + 1)}
+          >
+            Refresh
+          </Button>
+        </div>
+      </div>
 
+      <div className="portal-card">
+        <div className="portal-toolbar">
           <Input
-            style={{ width: 320 }}
+            className="portal-search"
             placeholder="Search"
+            prefix={<SearchOutlined style={{ color: "#9b8fd6" }} />}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            allowClear
           />
-
-          <DatePicker.RangePicker value={range} onChange={setRange} />
-        </Space>
-      </Card>
-
-      <Card>
-        <CampaignTabs
-          campaigns={campaigns}
-          activeKey={activeCampaignName}
-          onChange={(name) => setActiveCampaignName(name)}
-        />
+          <Dropdown menu={sortMenu} trigger={["click"]}>
+            <Button className="portal-pill" icon={<SwapOutlined rotate={90} />}>
+              Sort
+            </Button>
+          </Dropdown>
+          <Dropdown menu={filterMenu} trigger={["click"]}>
+            <Button className="portal-pill" icon={<FilterOutlined />}>
+              Filter
+            </Button>
+          </Dropdown>
+          <Button
+            className="portal-pill"
+            icon={<ProfileOutlined />}
+            type={expandAll ? "primary" : "default"}
+            onClick={() => setExpandAll((v) => !v)}
+          >
+            Form
+          </Button>
+        </div>
 
         <RecordsTable
-          items={recordState.items}
+          items={displayItems}
           loading={recordState.loading}
           apiConfigs={apiConfigs}
           fieldLabels={fieldLabels}
+          expandAll={expandAll}
         />
 
         <CursorPager
@@ -187,7 +248,7 @@ export default function RecordsPortalPage() {
           onNext={loadMore}
           loading={recordState.loading}
         />
-      </Card>
+      </div>
     </div>
   );
 }

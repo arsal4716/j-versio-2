@@ -134,7 +134,6 @@ export default function RecordsTable({
   const columns = useMemo(
     () => [
       { title: "Time Stamp", dataIndex: "createdAt", key: "createdAt", width: 190, render: (v) => formatEST(v) },
-      { title: "Page", key: "page", width: 170, ellipsis: true, render: (_, r) => r?.metadata?.pageUrl || "—" },
       {
         title: "Full Name",
         key: "fname",

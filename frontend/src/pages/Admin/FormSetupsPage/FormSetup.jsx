@@ -97,37 +97,37 @@ const FormSetupsPage = () => {
   }, [loadFormSetups]);
 
   // Handle center change
-const handleCenterChange = (centerId) => {
+  const handleCenterChange = (centerId) => {
 
-  setSelectedCenter(centerId);
-  setSelectedCampaign("");
-  setCurrentPage(1);
-  dispatch(clearCampaigns());
+    setSelectedCenter(centerId);
+    setSelectedCampaign("");
+    setCurrentPage(1);
+    dispatch(clearCampaigns());
 
-  const center = centers.find((c) => c._id === centerId);
-  if (center) {
-    dispatch(
-      getCampaignsForCenter({
-        centerId: center._id,
-        verificationCode: center.verificationCode,
-      }),
-    );
-  }
-};
+    const center = centers.find((c) => c._id === centerId);
+    if (center) {
+      dispatch(
+        getCampaignsForCenter({
+          centerId: center._id,
+          verificationCode: center.verificationCode,
+        }),
+      );
+    }
+  };
 
   const handleCampaignChange = (campaignName) => {
-  setSelectedCampaign(campaignName);
-  setCurrentPage(1);
+    setSelectedCampaign(campaignName);
+    setCurrentPage(1);
 
-  if (campaignName && selectedCenter) {
-    dispatch(
-      getFormSetup({
-        centerId: selectedCenter,
-        campaignName,
-      }),
-    );
-  }
-};
+    if (campaignName && selectedCenter) {
+      dispatch(
+        getFormSetup({
+          centerId: selectedCenter,
+          campaignName,
+        }),
+      );
+    }
+  };
 
 
   const handleCreateNew = () => {
@@ -260,12 +260,12 @@ const handleCenterChange = (centerId) => {
 
   return (
     <Container fluid className="py-4">
-      <Row className="mb-4 mt-5">
+      <Row className="mb-3 align-items-center">
         <Col>
-          <h2>Form Setups Management</h2>
-          <p className="text-muted mt-5">
-            Manage form configurations for all centers and campaigns
-          </p>
+          <h4 className="mb-1">Form Setups Management</h4>
+          <small className="text-muted">
+            Manage form configurations for all centers and campaigns 
+          </small>
         </Col>
         <Col className="d-flex justify-content-end gap-2">
           <Button

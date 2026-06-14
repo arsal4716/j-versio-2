@@ -1,5 +1,6 @@
 // backend/services/apiConfigService.js
 import ApiConfig from "../models/ApiConfig.js";
+import Campaign from "../models/Campaigns.js";
 
 function sanitizeApiConfigForResponse(doc) {
   const obj = doc.toObject();
@@ -57,15 +58,36 @@ async function listByCenterCampaign(centerId, campaignId) {
   });
 }
 
+// Lists a campaign's API configs by campaign NAME (the records portal works in
+// names, not Campaign _ids). Matches both the denormalized campaignName and the
+// underlying Campaign _id for backward compatibility with older configs.
+async function listByCenterCampaignName(centerId, campaignName) {
+  const campaign = await Campaign.findOne({ center: centerId, name: campaignName })
+    .select("_id")
+    .lean();
+  const or = [{ campaignName }];
+  if (campaign?._id) or.push({ campaignId: campaign._id });
+  const docs = await ApiConfig.find({ centerId, isDeleted: false, $or: or })
+    .sort({ createdAt: -1 })
+    .lean();
+  return docs.map((d) => {
+    d.headers = (d.headers || []).map((h) => (h.secret ? { ...h, value: "********" } : h));
+    d.queryParams = (d.queryParams || []).map((p) => (p.secret ? { ...p, value: "********" } : p));
+    return d;
+  });
+}
+
 export { createApiConfig,
   updateApiConfig,
   softDeleteApiConfig,
   toggleStatus,
-  listByCenterCampaign, };
+  listByCenterCampaign,
+  listByCenterCampaignName, };
 export default {
   createApiConfig,
   updateApiConfig,
   softDeleteApiConfig,
   toggleStatus,
   listByCenterCampaign,
+  listByCenterCampaignName,
 };

@@ -3,11 +3,13 @@ import mongoose from "mongoose";
 import SubmissionLog from "../models/SubmissionLog.js";
 import { decodeCursor, encodeCursor, buildCursorMatch } from "../utils/cursorPagination.js";
 
-async function listPortalRecords({ centerId, campaignName, startDate, endDate, cursor, limit = 15, q }) {
+async function listPortalRecords({ centerId, campaignName, startDate, endDate, cursor, limit = 15, q, userId }) {
   const match = {
     centerId: new mongoose.Types.ObjectId(centerId),
     campaignName,
   };
+
+  if (userId) match.userId = new mongoose.Types.ObjectId(userId);
 
   if (startDate || endDate) {
     match.createdAt = {};

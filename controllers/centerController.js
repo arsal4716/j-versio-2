@@ -183,7 +183,10 @@ export const getCenters = async (req, res, next) => {
 
     const isSuperAdmin = req.user.roles?.includes("super_admin");
     if (!isSuperAdmin) {
-      filter.createdBy = req.user._id;
+      // Admins/users belong to a center via centerId — centers are created by
+      // the super admin, so scoping by createdBy would (wrongly) return nothing
+      // and hide their own center (and therefore their records/campaign tabs).
+      filter._id = req.user.centerId || null;
     }
 
     const centers = await Center.find(filter)

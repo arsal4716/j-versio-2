@@ -13,6 +13,7 @@ import {
 } from "../../../store/slices/apiConfigSlice";
 import ApiConfigForm from "../../../components/ApiBuilder/ApiConfigForm";
 import ApiConfigsTable from "../../../components/ApiBuilder/ApiConfigsTable";
+import { getFormFieldsByCampaign } from "../../../services/formFieldsforCampaign";
 
 const { Title } = Typography;
 
@@ -26,13 +27,30 @@ export default function ApiBuilderPage() {
   const isSuper = useMemo(() => (user?.roles || []).includes("super_admin"), [user]);
   const [centerId, setCenterId] = useState(null);
   const [campaignId, setCampaignId] = useState(null);
+  const [formFields, setFormFields] = useState([]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
+  const campaignName = useMemo(
+    () => (campaigns || []).find((c) => c._id === campaignId)?.name || "",
+    [campaigns, campaignId]
+  );
+
   useEffect(() => {
     if (isSuper) dispatch(getCenters());
   }, [dispatch, isSuper]);
+
+  // Load the campaign's form fields so the mapping builder can offer them.
+  useEffect(() => {
+    if (!centerId || !campaignName) {
+      setFormFields([]);
+      return;
+    }
+    getFormFieldsByCampaign(centerId, campaignName)
+      .then((res) => setFormFields(res?.data?.fields || []))
+      .catch(() => setFormFields([]));
+  }, [centerId, campaignName]);
 
  useEffect(() => {
   if (!centerId) return;
@@ -118,6 +136,8 @@ export default function ApiBuilderPage() {
         loading={apiState.loading}
         centerId={centerId}
         campaignId={campaignId}
+        campaignName={campaignName}
+        formFields={formFields}
         initialValues={
           editing
             ? {

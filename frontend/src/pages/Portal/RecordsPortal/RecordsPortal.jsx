@@ -3,9 +3,10 @@ import { Card, Space, Input, DatePicker, Typography, message } from "antd";
 import { useDispatch, useSelector } from "react-redux";
 import { getCenters } from "../../../store/slices/centerSlice";
 import { fetchRecords, resetRecords } from "../../../store/slices/recordSlice";
-import { fetchApiConfigs } from "../../../store/slices/apiConfigSlice";
 import { setOverrideCenterId } from "../../../store/slices/tenantSlice";
 import useDebouncedValue from "../../../hooks/useDebouncedValue";
+import { apiConfigService } from "../../../services/apiConfigService";
+import { getFormFieldsByCampaign } from "../../../services/formFieldsforCampaign";
 
 import CenterPicker from "../../../components/Records/CenterPicker";
 import CampaignTabs from "../../../components/Records/CampaignTabs";
@@ -20,7 +21,6 @@ export default function RecordsPortalPage() {
   const user = useSelector((s) => s.auth.user);
   const centersState = useSelector((s) => s.centers);
   const recordState = useSelector((s) => s.records);
-  const apiState = useSelector((s) => s.apiConfigs);
   const tenant = useSelector((s) => s.tenant);
 
   const centers = centersState.centers || [];
@@ -32,6 +32,11 @@ export default function RecordsPortalPage() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 450);
   const [range, setRange] = useState(null);
+
+  // API configs + form-field labels for the active campaign (drives the
+  // "Data Transfer" buttons and the label-mapped expanded rows).
+  const [apiConfigs, setApiConfigs] = useState([]);
+  const [fieldLabels, setFieldLabels] = useState({});
 
   const effectiveCenterId = useMemo(() => {
     if (isSuper && tenant.overrideCenterId) return tenant.overrideCenterId;
@@ -88,13 +93,32 @@ export default function RecordsPortalPage() {
     dispatch(fetchRecords(params))
       .unwrap()
       .catch((e) => message.error(String(e)));
-
-    // Fetch API configs (your slice wants campaignId)
-    // If your api configs are stored using Campaign model _id, you must map name->id.
-    // If you DON'T have campaignId in center.campaigns, you can't fetch by id here.
-    // So we only fetch api configs if you also have a Campaign model list somewhere.
-    // For now: skip api configs until campaignId exists.
   }, [dispatch, activeCampaignName, debouncedSearch, range, isSuper, effectiveCenterId]);
+
+  // Load this campaign's API buttons + form-field labels (name -> label) so the
+  // portal can show real "Data Transfer" buttons and human-readable field names.
+  useEffect(() => {
+    if (!activeCampaignName || !effectiveCenterId) {
+      setApiConfigs([]);
+      setFieldLabels({});
+      return;
+    }
+
+    apiConfigService
+      .listByCampaign({ centerId: effectiveCenterId, campaignName: activeCampaignName })
+      .then((res) => setApiConfigs(res.data.data || []))
+      .catch(() => setApiConfigs([]));
+
+    getFormFieldsByCampaign(effectiveCenterId, activeCampaignName)
+      .then((res) => {
+        const map = {};
+        (res?.data?.fields || []).forEach((f) => {
+          if (f?.name) map[f.name] = f.label || f.name;
+        });
+        setFieldLabels(map);
+      })
+      .catch(() => setFieldLabels({}));
+  }, [activeCampaignName, effectiveCenterId]);
 
   const loadMore = async () => {
     if (!recordState.cursor || !activeCampaignName) return;
@@ -154,7 +178,8 @@ export default function RecordsPortalPage() {
         <RecordsTable
           items={recordState.items}
           loading={recordState.loading}
-          apiConfigs={apiState.items}
+          apiConfigs={apiConfigs}
+          fieldLabels={fieldLabels}
         />
 
         <CursorPager

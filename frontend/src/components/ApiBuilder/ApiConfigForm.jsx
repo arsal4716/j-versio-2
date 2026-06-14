@@ -1,7 +1,9 @@
 // frontend/src/components/ApiBuilder/ApiConfigForm.jsx
 import React, { useMemo } from "react";
-import { Button, Form, Input, Modal, Select, InputNumber, Space } from "antd";
+import { Button, Form, Input, Modal, Select, InputNumber, Space, Divider } from "antd";
 import KeyValueEditor from "./KeyValueEditor";
+import FieldMappingEditor from "./FieldMappingEditor";
+import CustomFieldEditor from "./CustomFieldEditor";
 
 const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
 const BODY_TYPES = ["json", "xml", "form-data", "raw", "encrypted"];
@@ -15,6 +17,8 @@ export default function ApiConfigForm({
   initialValues,
   centerId,
   campaignId,
+  campaignName,
+  formFields = [],
 }) {
   const [form] = Form.useForm();
 
@@ -25,6 +29,8 @@ export default function ApiConfigForm({
       endpointUrl: "",
       headers: [],
       queryParams: [],
+      fieldMappings: [],
+      customFields: [],
       bodyType: "json",
       bodySchema: {},
       authType: "none",
@@ -55,6 +61,7 @@ export default function ApiConfigForm({
             ...values,
             centerId,
             campaignId,
+            campaignName,
             bodySchema:
               typeof values.bodySchema === "string"
                 ? safeParseJson(values.bodySchema)
@@ -106,6 +113,27 @@ export default function ApiConfigForm({
         <Form.Item name="queryParams" label="Query Params">
           <KeyValueEditor />
         </Form.Item>
+
+        <Divider orientation="left">Field Mapping</Divider>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
+          Map each value (campaign form field, captured system value, or a custom
+          field the agent enters) to the key this API expects.
+        </div>
+        <Form.Item name="fieldMappings" noStyle>
+          <FieldMappingEditor formFields={formFields} />
+        </Form.Item>
+
+        <Divider orientation="left">Custom API Fields</Divider>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
+          Extra fields this API needs that are not on the lead form (e.g. City).
+          The agent fills these on the portal before sending.
+        </div>
+        <Form.Item name="customFields" noStyle>
+          <CustomFieldEditor />
+        </Form.Item>
+
+        <Divider />
+
 
         <Form.Item name="bodySchema" label="Body Schema (JSON)">
           <Input.TextArea rows={6} placeholder='{"key":"value"}' />

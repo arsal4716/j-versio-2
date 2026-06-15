@@ -1,5 +1,32 @@
 // backend/controllers/portalRecordController.js
 import { listPortalRecords } from "../services/recordService.js";
+import SubmissionLog from "../models/SubmissionLog.js";
+import { isValidObjectId } from "../utils/objectId.js";
+
+const isSuper = (user) => Array.isArray(user?.roles) && user.roles.includes("super_admin");
+
+// Delete a single lead record. Super admin: any. Admin: own center only.
+// Plain users may not delete.
+async function remove(req, res) {
+  const { id } = req.params;
+  if (!isValidObjectId(id)) {
+    return res.status(400).json({ success: false, message: "Invalid record id" });
+  }
+
+  const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+  if (!roles.includes("super_admin") && !roles.includes("admin")) {
+    return res.status(403).json({ success: false, message: "Not allowed to delete records" });
+  }
+
+  const filter = { _id: id };
+  if (!isSuper(req.user)) filter.centerId = req.user.centerId;
+
+  const result = await SubmissionLog.deleteOne(filter);
+  if (result.deletedCount === 0) {
+    return res.status(404).json({ success: false, message: "Record not found" });
+  }
+  return res.json({ success: true, message: "Record deleted" });
+}
 
 async function list(req, res) {
   const centerId = req.tenant.centerId;
@@ -32,5 +59,5 @@ async function list(req, res) {
   return res.json({ success: true, ...result });
 }
 
-export { list };
-export default { list };
+export { list, remove };
+export default { list, remove };

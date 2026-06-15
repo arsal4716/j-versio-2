@@ -280,7 +280,13 @@ const CampaignFormPage = () => {
                   field={field}
                   value={formData[field.name] || ""}
                   onChange={handleChange}
-                  options={field.name === "state" ? usStates : []}
+                  options={
+                    field.name === "state"
+                      ? usStates
+                      : Array.isArray(field.options)
+                      ? field.options
+                      : []
+                  }
                   validation={getFieldValidation(field)}
                 />
               ))}

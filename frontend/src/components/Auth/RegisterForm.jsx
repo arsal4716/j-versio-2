@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Form, Button, Spinner, Alert } from "react-bootstrap";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -12,7 +12,7 @@ const RegisterForm = () => {
 
   // Campaigns come from the verified center (returned by the verify-code call),
   // so no authenticated request is needed during self-registration.
-  const { centerId, verificationCode, campaigns } = useSelector(
+  const { centerId, centerName, verificationCode, campaigns } = useSelector(
     (state) => state.verification
   );
 
@@ -26,6 +26,11 @@ const RegisterForm = () => {
   });
   const [localError, setLocalError] = useState("");
   const [created, setCreated] = useState(false);
+
+  // The company is the center the code belongs to — auto-filled, no retyping.
+  useEffect(() => {
+    if (centerName) setFormData((prev) => ({ ...prev, company: centerName }));
+  }, [centerName]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -115,10 +120,13 @@ const RegisterForm = () => {
           <Form.Control
             type="text"
             name="company"
-            placeholder="Enter your Company Name"
             value={formData.company}
-            onChange={handleChange}
+            readOnly
+            plaintext={false}
           />
+          <Form.Text className="text-muted">
+            Auto-filled from your verification code.
+          </Form.Text>
         </Form.Group>
 
         <Form.Group className="mb-3">

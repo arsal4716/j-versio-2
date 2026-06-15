@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import { notifySuccess, notifyError } from "../../../utils/Notifications";
+import { getCenters } from "../../../store/slices/centerSlice";
 import { getAllCampaigns } from "../../../store/slices/campaignSlice";
 
 const UsersList = () => {
@@ -276,14 +277,16 @@ const UsersList = () => {
                           >
                             <Edit size={16} />
                           </Button>
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => handleDelete(user)}
-                            title="Delete"
-                          >
-                            <Trash2 size={16} />
-                          </Button>
+                          {!user.roles?.includes("super_admin") && (
+                            <Button
+                              variant="outline-danger"
+                              size="sm"
+                              onClick={() => handleDelete(user)}
+                              title="Delete"
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -366,6 +369,11 @@ const UserFormPage = () => {
   const [errors, setErrors] = useState({});
   const [centerCampaigns, setCenterCampaigns] = useState([]); // campaigns for selected center
 
+  // Centers must be loaded for the dropdown + to resolve the user's center on edit.
+  useEffect(() => {
+    dispatch(getCenters());
+  }, [dispatch]);
+
   // Populate form in edit mode
   useEffect(() => {
     if (isEditMode && currentUser) {
@@ -376,7 +384,9 @@ const UserFormPage = () => {
         password: "",
         confirmPassword: "",
         roles: currentUser.roles || ["user"],
-        centerId: currentUser.centerId || "",
+        // centerId is populated (an object) on fetch — keep just the id so the
+        // dropdown matches and the allowed-campaign checkboxes load/pre-check.
+        centerId: currentUser.centerId?._id || currentUser.centerId || "",
         allowedCampaigns: currentUser.allowedCampaigns || [],
       });
     }

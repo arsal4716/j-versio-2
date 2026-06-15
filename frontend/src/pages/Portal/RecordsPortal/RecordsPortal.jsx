@@ -8,11 +8,13 @@ import {
   ProfileOutlined,
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { getCenters } from "../../../store/slices/centerSlice";
 import { fetchRecords, resetRecords } from "../../../store/slices/recordSlice";
 import { setOverrideCenterId } from "../../../store/slices/tenantSlice";
 import useDebouncedValue from "../../../hooks/useDebouncedValue";
 import { apiConfigService } from "../../../services/apiConfigService";
+import { recordService } from "../../../services/recordService";
 import { getFormFieldsByCampaign } from "../../../services/formFieldsforCampaign";
 
 import CenterPicker from "../../../components/Records/CenterPicker";
@@ -23,6 +25,7 @@ import "../../../components/Records/RecordsPortal.css";
 
 export default function RecordsPortalPage() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   const user = useSelector((s) => s.auth.user);
   const centersState = useSelector((s) => s.centers);
@@ -41,10 +44,9 @@ export default function RecordsPortalPage() {
   const [range, setRange] = useState(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
-  // Client-side view controls (Sort / Filter / Form toggle).
+  // Client-side view controls (Sort / Filter).
   const [sortOrder, setSortOrder] = useState("desc");
   const [resultFilter, setResultFilter] = useState("all");
-  const [expandAll, setExpandAll] = useState(false);
 
   const [apiConfigs, setApiConfigs] = useState([]);
   const [fieldLabels, setFieldLabels] = useState({});
@@ -64,9 +66,14 @@ export default function RecordsPortalPage() {
   }, [centers, effectiveCenterId]);
 
   const campaigns = useMemo(() => {
-    const list = selectedCenter?.campaigns || [];
-    return list.filter((c) => c?.isActive !== false);
-  }, [selectedCenter]);
+    let list = (selectedCenter?.campaigns || []).filter((c) => c?.isActive !== false);
+    // A plain user only sees the campaigns assigned to them — never the others.
+    if (isUserOnly) {
+      const allowed = user?.allowedCampaigns || [];
+      list = list.filter((c) => allowed.includes(c.name));
+    }
+    return list;
+  }, [selectedCenter, isUserOnly, user?.allowedCampaigns]);
 
   useEffect(() => {
     const first = campaigns?.[0]?.name;
@@ -167,6 +174,25 @@ export default function RecordsPortalPage() {
     onClick: ({ key }) => setResultFilter(key),
   };
 
+  // "Form" sends the agent back to the submission page for the active campaign.
+  const goToSubmissionForm = () => {
+    if (!effectiveCenterId || !activeCampaignName) {
+      message.info("Select a campaign first.");
+      return;
+    }
+    navigate(`/form/${effectiveCenterId}/${activeCampaignName}`);
+  };
+
+  const handleDeleteRecord = async (record) => {
+    try {
+      await recordService.remove(record._id);
+      message.success("Record deleted");
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      message.error(e.response?.data?.message || "Failed to delete record");
+    }
+  };
+
   return (
     <div className="portal-wrap">
       <div className="portal-header">
@@ -228,8 +254,7 @@ export default function RecordsPortalPage() {
           <Button
             className="portal-pill"
             icon={<ProfileOutlined />}
-            type={expandAll ? "primary" : "default"}
-            onClick={() => setExpandAll((v) => !v)}
+            onClick={goToSubmissionForm}
           >
             Form
           </Button>
@@ -240,7 +265,8 @@ export default function RecordsPortalPage() {
           loading={recordState.loading}
           apiConfigs={apiConfigs}
           fieldLabels={fieldLabels}
-          expandAll={expandAll}
+          canDelete={!isUserOnly}
+          onDelete={handleDeleteRecord}
         />
 
         <CursorPager

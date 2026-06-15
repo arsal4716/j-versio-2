@@ -235,8 +235,132 @@ function extractState(formData) {
   return normalizeStateName(st);
 }
 
+/* ------------------------------------------------------------------ */
+/* Session-ID sticky-IP mode                                           */
+/* ------------------------------------------------------------------ */
+// Each submission gets a unique session id -> a dedicated sticky exit IP for the
+// requested zip (or state), held for the whole submission, through ONE endpoint
+// port. Concurrency is bounded per-center by the Redis limiter, not by ports.
+// Username format is templated so it can be tuned per Decodo plan via env.
+
+const PROXY_MODE = (process.env.PROXY_MODE || "session").toLowerCase();
+const DECODO_HOST = process.env.DECODO_HOST || "us.decodo.com";
+const DECODO_PORT = Number(process.env.DECODO_PORT || 10000);
+const SESSION_DURATION_MIN = Number(process.env.PROXY_SESSION_DURATION_MIN || 10);
+const ZIP_USER_TEMPLATE =
+  process.env.DECODO_ZIP_USER_TEMPLATE ||
+  "user-{user}-country-us-zip-{zip}-sessionduration-{dur}-session-{session}";
+const STATE_USER_TEMPLATE =
+  process.env.DECODO_STATE_USER_TEMPLATE ||
+  "user-{user}-country-us-state-{stateCode}-sessionduration-{dur}-session-{session}";
+
+// name -> 2-letter code (reverse of stateAbbrevToName).
+const stateNameToAbbr = Object.entries(stateAbbrevToName).reduce((acc, [abbr, name]) => {
+  acc[name] = abbr;
+  return acc;
+}, {});
+
+function genSessionId(prefix = "s") {
+  return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function fillTemplate(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : ""));
+}
+
 class ProxyService {
+  // Dispatch to the configured proxy strategy.
   async getProxyForCenter(center, formData) {
+    if (PROXY_MODE === "port") return this.getProxyViaPort(center, formData);
+    return this.getProxyViaSession(center, formData);
+  }
+
+  // Session-ID sticky-IP strategy: zip first, state fallback. The same exit IP
+  // is held for the whole submission because the session id is reused for the
+  // life of the browser session.
+  async getProxyViaSession(center, formData) {
+    const proxy = center?.proxy || {};
+    const provider = normalizeProvider(proxy.provider);
+    const usernameBase = proxy.username;
+    const password = proxy.password;
+
+    if (!provider) throw new ValidationError("Center proxy configuration is missing (provider)");
+    if (!usernameBase || !password) {
+      throw new ValidationError("Proxy username/password missing in center settings");
+    }
+    if (provider !== "decodo") {
+      throw new ValidationError(`Unsupported proxy provider: "${provider}". Expected "decodo".`);
+    }
+
+    const ipCheckUrl = getDecodoIpCheckUrl();
+    const proxyHost = `${DECODO_HOST}:${DECODO_PORT}`;
+    const zipCode = extractZipCode(formData);
+
+    // ---- ZIP (preferred) ----
+    if (zipCode) {
+      try {
+        const sessionId = genSessionId(`zip${zipCode}`);
+        const username = fillTemplate(ZIP_USER_TEMPLATE, {
+          user: usernameBase,
+          zip: zipCode,
+          dur: SESSION_DURATION_MIN,
+          session: sessionId,
+        });
+        const ip = await verifyProxyIp(`http://${username}:${password}@${proxyHost}`, ipCheckUrl);
+        if (!ip) throw new Error("Proxy verification failed (no IP returned)");
+        logger.info("ZIP session proxy verified", { ip, zipCode });
+        return {
+          proxyUrl: `http://${proxyHost}`,
+          username,
+          password,
+          ip,
+          mode: "zip",
+          zipCode,
+          sessionId,
+        };
+      } catch (e) {
+        if (e?.code === "PROXY_ERROR") throw e; // expired account -> don't mask
+        logger.warn("ZIP session proxy failed, falling back to state", {
+          zipCode,
+          error: e?.message,
+        });
+      }
+    }
+
+    // ---- STATE fallback ----
+    const stateName = extractState(formData);
+    if (!stateName) {
+      throw new ValidationError(
+        "ZIP proxy failed (or missing) and state is missing/invalid. Please submit a valid US state."
+      );
+    }
+    const stateCode = stateNameToAbbr[stateName] || "";
+    const sessionId = genSessionId(`st${stateCode || "x"}`);
+    const username = fillTemplate(STATE_USER_TEMPLATE, {
+      user: usernameBase,
+      state: stateName.toLowerCase().replace(/[^a-z]+/g, "_"),
+      stateCode,
+      dur: SESSION_DURATION_MIN,
+      session: sessionId,
+    });
+    const ip = await verifyProxyIp(`http://${username}:${password}@${proxyHost}`, ipCheckUrl);
+    if (!ip) {
+      throw new BrowserError(`State session proxy failed for "${stateName}" (no IP returned)`);
+    }
+    logger.info("STATE session proxy verified", { ip, stateName });
+    return {
+      proxyUrl: `http://${proxyHost}`,
+      username,
+      password,
+      ip,
+      mode: "state",
+      state: stateName,
+      sessionId,
+    };
+  }
+
+  // Legacy port-pool strategy (PROXY_MODE=port).
+  async getProxyViaPort(center, formData) {
     const proxy = center?.proxy || {};
     const provider = normalizeProvider(proxy.provider);
     const type = normalizeType(proxy.type);

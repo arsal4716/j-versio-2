@@ -41,10 +41,21 @@ async function listPortalRecords({ centerId, campaignName, startDate, endDate, c
 
   if (q && q.trim()) {
     const qq = q.trim();
+    // Digits-only variant so a search like "(647) 897" still matches a stored
+    // 10-digit phone number.
+    const digits = qq.replace(/\D/g, "");
     match.$or = [
       { "metadata.leadId": { $regex: qq, $options: "i" } },
       { "metadata.ipAddress": { $regex: qq, $options: "i" } },
       { "metadata.proxyIp": { $regex: qq, $options: "i" } },
+      { "formData.phone": { $regex: qq, $options: "i" } },
+      { "formData.txtPhone": { $regex: qq, $options: "i" } },
+      ...(digits
+        ? [
+            { "formData.phone": { $regex: digits } },
+            { "formData.txtPhone": { $regex: digits } },
+          ]
+        : []),
     ];
   }
 

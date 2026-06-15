@@ -133,6 +133,17 @@ const STATE_NAME_TO_ABBR = Object.fromEntries(
   Object.entries(STATE_ABBR_TO_NAME).map(([abbr, name]) => [name.toLowerCase(), abbr])
 );
 
+function formatPhone(value, format) {
+  if (!format) return value;
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return value;
+  const ten = digits.length > 10 ? digits.slice(-10) : digits;
+  if (format === "10") return ten;
+  if (format === "11") return `1${ten}`;
+  if (format === "plus1") return `+1${ten}`;
+  return value;
+}
+
 function formatState(value, format) {
   const raw = String(value ?? "").trim();
   if (!raw || !format) return raw;
@@ -197,6 +208,7 @@ async function executeApiConfigForLead(cfg, record, customValues = {}) {
       else if (m.source === "system") value = systemValues[m.sourceKey] ?? "";
       else if (m.source === "custom") value = customValues[m.apiKey] ?? "";
       if (m.stateFormat) value = formatState(value, m.stateFormat);
+      if (m.phoneFormat) value = formatPhone(value, m.phoneFormat);
       if (m.location === "query") params[m.apiKey] = String(value ?? "");
       else body[m.apiKey] = value;
     }

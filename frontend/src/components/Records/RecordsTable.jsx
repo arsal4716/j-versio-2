@@ -1,7 +1,7 @@
 // frontend/src/components/Records/RecordsTable.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Table, Button, Modal, Tag, Spin, Typography, Input, message, Descriptions } from "antd";
-import { SwapOutlined } from "@ant-design/icons";
+import { Table, Button, Modal, Tag, Spin, Typography, Input, message, Descriptions, Popconfirm } from "antd";
+import { SwapOutlined, DeleteOutlined } from "@ant-design/icons";
 import { formatEST } from "../../utils/formatDate";
 import { apiConfigService } from "../../services/apiConfigService";
 
@@ -122,6 +122,8 @@ export default function RecordsTable({
   apiConfigs = [],
   fieldLabels = {},
   expandAll = false,
+  canDelete = false,
+  onDelete,
 }) {
   const [activeApi, setActiveApi] = useState(null);
   const [expandedKeys, setExpandedKeys] = useState([]);
@@ -134,19 +136,7 @@ export default function RecordsTable({
   const columns = useMemo(
     () => [
       { title: "Time Stamp", dataIndex: "createdAt", key: "createdAt", width: 190, render: (v) => formatEST(v) },
-      {
-        title: "Full Name",
-        key: "fname",
-        width: 130,
-        render: (_, r) =>
-          pickFormValue(r.formData, ["fname", "firstname", "first_name", "first", "fullname", "full_name"]) || "—",
-      },
-      {
-        title: "Last Name",
-        key: "lname",
-        width: 130,
-        render: (_, r) => pickFormValue(r.formData, ["lname", "lastname", "last_name", "last"]) || "—",
-      },
+      { title: "Page", key: "page", width: 170, ellipsis: true, render: (_, r) => r?.metadata?.pageUrl || "—" },
       { title: "Phone Number", key: "phone", width: 140, render: (_, r) => pickFormValue(r.formData, ["phone"]) || "—" },
       { title: "IP Address", key: "ip", width: 150, ellipsis: true, render: (_, r) => r?.metadata?.ipAddress || "—" },
       { title: "Trustedform", key: "tf", width: 150, ellipsis: true, render: (_, r) => r?.metadata?.trustedForm || "—" },
@@ -179,8 +169,27 @@ export default function RecordsTable({
             </div>
           ),
       },
+      ...(canDelete
+        ? [
+            {
+              title: "",
+              key: "actions",
+              width: 60,
+              render: (_, r) => (
+                <Popconfirm
+                  title="Delete this record?"
+                  okText="Delete"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => onDelete?.(r)}
+                >
+                  <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+                </Popconfirm>
+              ),
+            },
+          ]
+        : []),
     ],
-    [apiConfigs]
+    [apiConfigs, canDelete, onDelete]
   );
 
   // Expanded row: every captured form field, shown by its human label.

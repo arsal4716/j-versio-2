@@ -199,16 +199,16 @@ const CampaignFormPage = () => {
       <WhiteHeader />
 
       <div
-        className="d-flex justify-content-center"
-        style={{ gap: 0, padding: "0 150px", alignItems: "stretch" }}
+        className="d-flex flex-column flex-lg-row justify-content-center px-3 px-lg-5 py-3 py-lg-4"
+        style={{ gap: 0, alignItems: "stretch", maxWidth: 1200, margin: "0 auto" }}
       >
         <div
+          className="d-none d-lg-flex submission-left"
           style={{
-            width: "30%",
+            flex: "0 0 32%",
             backgroundColor: "#0033A0",
             borderRadius: "12px 0 0 12px",
             overflow: "hidden",
-            display: "flex",
             flexDirection: "column",
           }}
         >
@@ -216,10 +216,10 @@ const CampaignFormPage = () => {
         </div>
 
         <Card
+          className="submission-card flex-grow-1"
           style={{
-            width: "70%",
-            borderRadius: "0 12px 12px 0",
-            padding: "40px",
+            borderRadius: "12px",
+            padding: "clamp(20px, 4vw, 40px)",
             display: "flex",
             flexDirection: "column",
           }}
@@ -280,7 +280,13 @@ const CampaignFormPage = () => {
                   field={field}
                   value={formData[field.name] || ""}
                   onChange={handleChange}
-                  options={field.name === "state" ? usStates : []}
+                  options={
+                    field.name === "state"
+                      ? usStates
+                      : Array.isArray(field.options)
+                      ? field.options
+                      : []
+                  }
                   validation={getFieldValidation(field)}
                 />
               ))}

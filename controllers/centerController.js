@@ -332,6 +332,55 @@ export const updateCenter = async (req, res, next) => {
   }
 };
 
+// Super admin: revoke or restore a center's access, with an optional custom
+// message shown to that center's users when they are signed out / try to log in.
+export const setCenterAccess = async (req, res, next) => {
+  try {
+    if (!req.user.roles?.includes("super_admin")) {
+      return fail(res, {
+        message: "Only super admin can change center access",
+        status: STATUS_CODES.FORBIDDEN,
+      });
+    }
+
+    const { status, revokeMessage } = req.body;
+    if (!["active", "revoked"].includes(status)) {
+      return fail(res, { message: "status must be 'active' or 'revoked'", status: STATUS_CODES.BAD_REQUEST });
+    }
+
+    const center = await Center.findById(req.params.id);
+    if (!center) {
+      return fail(res, { message: "Center not found", status: STATUS_CODES.NOT_FOUND });
+    }
+
+    center.status = status;
+    if (status === "revoked") {
+      center.revokeMessage =
+        (revokeMessage || "").trim() ||
+        "Your center's access has been revoked. Please contact the administrator.";
+    } else {
+      center.revokeMessage = "";
+    }
+    await center.save();
+
+    audit({
+      req,
+      centerId: center._id,
+      action: status === "revoked" ? "center.revoke" : "center.restore",
+      entity: "Center",
+      entityId: center._id,
+      message: `Center "${center.name}" ${status === "revoked" ? "revoked" : "restored"}`,
+    });
+
+    return success(res, {
+      message: status === "revoked" ? "Center access revoked" : "Center access restored",
+      data: { _id: center._id, status: center.status, revokeMessage: center.revokeMessage },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deleteCenter = async (req, res, next) => {
   try {
     const center = await Center.findById(req.params.id);

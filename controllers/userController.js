@@ -184,14 +184,24 @@ export const updateUser = async (req, res, next) => {
 
 export const deleteUser = async (req, res, next) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    const target = await User.findById(req.params.id);
 
-    if (!user) {
+    if (!target) {
       return fail(res, {
         message: 'User not found',
         status: STATUS_CODES.NOT_FOUND
       });
     }
+
+    // Super admin accounts are protected and can never be deleted.
+    if (Array.isArray(target.roles) && target.roles.includes('super_admin')) {
+      return fail(res, {
+        message: 'Super admin accounts cannot be deleted',
+        status: STATUS_CODES.FORBIDDEN
+      });
+    }
+
+    const user = await User.findByIdAndDelete(req.params.id);
 
     audit({
       req,

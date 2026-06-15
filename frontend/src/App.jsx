@@ -24,6 +24,7 @@ import UsersPage from "./pages/Admin/UsersPage/Users";
 import ApiBuilderPage from "./pages/SuperAdmin/ApiBuilder/ApiBuilderPage";
 import RecordsPortalPage from "./pages/Portal/RecordsPortal/RecordsPortal";
 import LogsPage from "./pages/Admin/LogsPage/Logs";
+import SettingsPage from "./pages/Admin/SettingsPage/Settings";
 import Pricing from "./pages/Pricing/Pricing";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "react-toastify/dist/ReactToastify.css";
@@ -180,6 +181,16 @@ const AnimatedRoutes = () => {
             <AdminRoute>
               <MotionContent>
                 <LogsPage />
+              </MotionContent>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <AdminRoute>
+              <MotionContent>
+                <SettingsPage />
               </MotionContent>
             </AdminRoute>
           }

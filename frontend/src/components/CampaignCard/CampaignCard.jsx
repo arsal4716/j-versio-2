@@ -11,6 +11,7 @@ const CampaignCard = ({
   isEnabled,
   onToggle,
   centerId,
+  canCustomize = false,
 }) => {
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
@@ -45,13 +46,15 @@ const CampaignCard = ({
         </div>
 
         <div className="card-actions">
-          <button
-            className="btn btn-customize"
-            disabled={!isEnabled}
-            onClick={() => setShowSettings(true)}
-          >
-            Customize
-          </button>
+          {canCustomize && (
+            <button
+              className="btn btn-customize"
+              disabled={!isEnabled}
+              onClick={() => setShowSettings(true)}
+            >
+              Customize
+            </button>
+          )}
           <button className="btn btn-outsource" disabled={!isEnabled}>
             Outsource
           </button>
@@ -61,12 +64,14 @@ const CampaignCard = ({
         </div>
       </div>
 
-      <SettingsModal
-        show={showSettings}
-        onHide={() => setShowSettings(false)}
-        centerId={centerId}
-        campaignName={title}
-      />
+      {canCustomize && (
+        <SettingsModal
+          show={showSettings}
+          onHide={() => setShowSettings(false)}
+          centerId={centerId}
+          campaignName={title}
+        />
+      )}
     </Col>
   );
 };

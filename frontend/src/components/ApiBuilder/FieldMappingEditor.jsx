@@ -29,9 +29,16 @@ const LOCATIONS = [
 ];
 
 const STATE_FORMATS = [
-  { value: "", label: "As-is" },
-  { value: "full", label: "Full name (Texas)" },
-  { value: "abbr", label: "Abbreviation (TX)" },
+  { value: "", label: "State: as-is" },
+  { value: "full", label: "State: full (Texas)" },
+  { value: "abbr", label: "State: abbr (TX)" },
+];
+
+const PHONE_FORMATS = [
+  { value: "", label: "Phone: as-is" },
+  { value: "10", label: "Phone: 10 digits" },
+  { value: "plus1", label: "Phone: +1XXXXXXXXXX" },
+  { value: "11", label: "Phone: 1XXXXXXXXXX" },
 ];
 
 export default function FieldMappingEditor({ value = [], onChange, formFields = [] }) {
@@ -41,7 +48,7 @@ export default function FieldMappingEditor({ value = [], onChange, formFields = 
   const addRow = () =>
     setRows([
       ...rows,
-      { apiKey: "", source: "form", sourceKey: "", location: "body", stateFormat: "", enabled: true },
+      { apiKey: "", source: "form", sourceKey: "", location: "body", stateFormat: "", phoneFormat: "", enabled: true },
     ]);
 
   const update = (idx, patch) =>
@@ -66,7 +73,7 @@ export default function FieldMappingEditor({ value = [], onChange, formFields = 
             key={idx}
             style={{
               display: "grid",
-              gridTemplateColumns: "1.1fr 1fr 1.3fr 0.9fr 1fr auto",
+              gridTemplateColumns: "1.1fr 1fr 1.3fr 0.8fr 1fr 1fr auto",
               gap: 8,
               alignItems: "center",
             }}
@@ -104,9 +111,16 @@ export default function FieldMappingEditor({ value = [], onChange, formFields = 
             )}
             <Select value={r.location} options={LOCATIONS} onChange={(v) => update(idx, { location: v })} />
             <Select
-              value={r.stateFormat || ""}
-              options={STATE_FORMATS}
-              onChange={(v) => update(idx, { stateFormat: v })}
+              value={r.phoneFormat ? r.phoneFormat : r.stateFormat || ""}
+              options={[...PHONE_FORMATS, ...STATE_FORMATS.filter((s) => s.value)]}
+              onChange={(v) =>
+                update(
+                  idx,
+                  ["10", "plus1", "11"].includes(v)
+                    ? { phoneFormat: v, stateFormat: "" }
+                    : { stateFormat: v, phoneFormat: "" }
+                )
+              }
             />
             <Button danger icon={<DeleteOutlined />} onClick={() => remove(idx)} />
           </div>

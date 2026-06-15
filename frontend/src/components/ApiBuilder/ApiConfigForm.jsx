@@ -135,14 +135,6 @@ export default function ApiConfigForm({
         <Divider />
 
 
-        <Form.Item name="bodySchema" label="Body Schema (JSON)">
-          <Input.TextArea rows={6} placeholder='{"key":"value"}' />
-        </Form.Item>
-
-        <Form.Item name="authConfig" label="Auth Config (JSON)">
-          <Input.TextArea rows={4} placeholder='{"token":"..."} or {"username":"..","password":".."}' />
-        </Form.Item>
-
         <Form.Item name="status" label="Status">
           <Select options={[{ value: "active" }, { value: "inactive" }].map((x) => ({ value: x.value, label: x.value }))} />
         </Form.Item>

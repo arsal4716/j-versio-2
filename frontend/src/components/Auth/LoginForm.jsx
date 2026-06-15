@@ -20,9 +20,15 @@ const LoginForm = () => {
   const [localError, setLocalError] = useState("");
   const [showForgot, setShowForgot] = useState(false);
 
-  // Clear any stale auth error left over from a previous visit on mount.
+  // Clear any stale auth error left over from a previous visit on mount, and
+  // surface a revoke/access message if the session was just terminated.
   useEffect(() => {
     dispatch(clearError());
+    const msg = localStorage.getItem("accessMessage");
+    if (msg) {
+      setLocalError(msg);
+      localStorage.removeItem("accessMessage");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

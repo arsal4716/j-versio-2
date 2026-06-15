@@ -8,5 +8,6 @@ import { listRecordsQuerySchema } from "../validators/recordValidators.js";
 import recordController from "../controllers/recordController.js";
 
 router.get("/", auth, tenantContext, validate(listRecordsQuerySchema, "query"), recordController.list);
+router.delete("/:id", auth, recordController.remove);
 
 export default router;

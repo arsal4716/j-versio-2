@@ -6,6 +6,9 @@ import CampaignCard from "../CampaignCard/CampaignCard";
 
 const CampaignList = () => {
   const { user, allowedCampaigns } = useSelector((state) => state.auth);
+  const roles = user?.roles || [];
+  // Only admins / super admins may open campaign settings — never a plain user.
+  const canCustomize = roles.includes("admin") || roles.includes("super_admin");
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -84,6 +87,7 @@ const CampaignList = () => {
               isEnabled={campaign.isEnabled}
               onToggle={(v) => onToggleCampaign(index, v)}
               centerId={user?.centerId}
+              canCustomize={canCustomize}
             />
           ))}
         </Row>

@@ -14,6 +14,7 @@ const fieldMapping = Joi.object({
   sourceKey: Joi.string().trim().max(200).allow("").default(""),
   location: Joi.string().valid("query", "body").default("body"),
   stateFormat: Joi.string().valid("", "full", "abbr").default(""),
+  phoneFormat: Joi.string().valid("", "10", "plus1", "11").default(""),
   enabled: Joi.boolean().default(true),
 });
 

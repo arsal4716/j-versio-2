@@ -20,6 +20,9 @@ const fieldMappingSchema = new mongoose.Schema(
         sourceKey: { type: String, trim: true, maxlength: 200, default: "" },
         location: { type: String, enum: ["query", "body"], default: "body" },
         stateFormat: { type: String, enum: ["", "full", "abbr"], default: "" },
+        // Phone formatting when sending: "" = as stored (10 digits),
+        // "plus1" = +1XXXXXXXXXX, "11" = 1XXXXXXXXXX.
+        phoneFormat: { type: String, enum: ["", "10", "plus1", "11"], default: "" },
         enabled: { type: Boolean, default: true },
     },
     { _id: false }

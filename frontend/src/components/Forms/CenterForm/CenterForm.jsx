@@ -349,28 +349,21 @@ const handleSubmit = async (e) => {
               </Form.Group>
 
               <Form.Group className="mb-3">
-                <Form.Label>Master Sheet ID</Form.Label>
+                <Form.Label>Admin Sheet ID *</Form.Label>
                 <Form.Control
                   type="text"
                   value={formData.googleSheets.masterSheetId}
                   onChange={(e) =>
                     handleChange("googleSheets.masterSheetId", e.target.value)
                   }
-                  placeholder="Google Sheets ID"
+                  placeholder="Google Spreadsheet ID where leads are saved"
                   required
                 />
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label>Admin Sheet ID</Form.Label>
-                <Form.Control
-                  type="text"
-                  value={formData.googleSheets.adminSheetId}
-                  onChange={(e) =>
-                    handleChange("googleSheets.adminSheetId", e.target.value)
-                  }
-                  placeholder="Google Sheets ID for admin data"
-                />
+                <Form.Text className="text-muted">
+                  Leads for this center are saved to a tab named exactly{" "}
+                  <strong>{formData.name || "the center name"}</strong> in this
+                  sheet — create that tab in the admin sheet.
+                </Form.Text>
               </Form.Group>
             </Card.Body>
           </Card>
@@ -560,6 +553,11 @@ const handleSubmit = async (e) => {
                             placeholder="e.g. Medicare, ACA, Auto Insurance, etc."
                             required
                           />
+                          <Form.Text className="text-muted">
+                            Use the exact tab name from the center sheet — leads
+                            for this campaign save to a tab named{" "}
+                            <strong>{campaign.name || "the campaign name"}</strong>.
+                          </Form.Text>
                         </Form.Group>
                       </Col>
                       <Col md={6}>

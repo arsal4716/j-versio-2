@@ -78,4 +78,10 @@ export const centerService = {
     const response = await api.delete(`/centers/${id}`);
     return response.data;
   },
+
+  // Revoke or restore a center's access (super admin only).
+  setAccess: async (id, { status, revokeMessage }) => {
+    const response = await api.patch(`/centers/${id}/access`, { status, revokeMessage });
+    return response.data;
+  },
 };

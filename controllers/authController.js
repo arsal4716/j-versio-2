@@ -74,6 +74,17 @@ export const login = async (req, res, next) => {
       status: STATUS_CODES.SUCCESS,
     });
   } catch (err) {
+    // A revoked center surfaces a custom message + a flag the client uses to
+    // sign the user out and display it.
+    if (err?.centerRevoked) {
+      return res.status(403).json({
+        success: false,
+        message: err.message,
+        centerRevoked: true,
+        data: null,
+        errors: null,
+      });
+    }
     return next(err);
   }
 };

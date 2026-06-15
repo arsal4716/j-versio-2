@@ -30,8 +30,11 @@ import {
   Building,
   Filter,
   Download,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { centerService } from "../../../services/centerService";
 import CenterForm from "../../../components/Forms/CenterForm/CenterForm";
 
 const CentersList = () => {
@@ -44,6 +47,9 @@ const CentersList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
+  const [revokeTarget, setRevokeTarget] = useState(null);
+  const [revokeMessage, setRevokeMessage] = useState("");
+  const [accessSaving, setAccessSaving] = useState(false);
   const [filters, setFilters] = useState({
     page: 1,
     limit: 10,
@@ -93,6 +99,41 @@ const CentersList = () => {
           icon: "error",
         });
       }
+    }
+  };
+
+  const toggleAccess = async (center) => {
+    if (center.status === "revoked") {
+      // Restore immediately.
+      try {
+        await centerService.setAccess(center._id, { status: "active" });
+        Swal.fire({ title: "Restored", text: `${center.name} can log in again.`, icon: "success", timer: 1800, showConfirmButton: false });
+        fetchCenters();
+      } catch (e) {
+        Swal.fire({ title: "Error", text: e.response?.data?.message || "Failed to restore", icon: "error" });
+      }
+    } else {
+      // Open the modal to capture a custom message before revoking.
+      setRevokeTarget(center);
+      setRevokeMessage("");
+    }
+  };
+
+  const confirmRevoke = async () => {
+    if (!revokeTarget) return;
+    setAccessSaving(true);
+    try {
+      await centerService.setAccess(revokeTarget._id, {
+        status: "revoked",
+        revokeMessage: revokeMessage.trim(),
+      });
+      Swal.fire({ title: "Revoked", text: `${revokeTarget.name} has been revoked.`, icon: "success", timer: 1800, showConfirmButton: false });
+      setRevokeTarget(null);
+      fetchCenters();
+    } catch (e) {
+      Swal.fire({ title: "Error", text: e.response?.data?.message || "Failed to revoke", icon: "error" });
+    } finally {
+      setAccessSaving(false);
     }
   };
 
@@ -274,7 +315,10 @@ const CentersList = () => {
                               </div>
                             </div>
                             <div className="flex-grow-1">
-                              <strong>{center.name}</strong>
+                              <strong>{center.name}</strong>{" "}
+                              {center.status === "revoked" && (
+                                <Badge bg="danger">Revoked</Badge>
+                              )}
                               <div className="small text-muted">
                                 ID: {center._id}
                               </div>
@@ -334,6 +378,14 @@ const CentersList = () => {
                               title="Edit"
                             >
                               <Edit size={16} />
+                            </Button>
+                            <Button
+                              variant={center.status === "revoked" ? "outline-success" : "outline-warning"}
+                              size="sm"
+                              onClick={() => toggleAccess(center)}
+                              title={center.status === "revoked" ? "Restore access" : "Revoke access"}
+                            >
+                              {center.status === "revoked" ? <Unlock size={16} /> : <Lock size={16} />}
                             </Button>
                             <Button
                               variant="outline-danger"
@@ -411,6 +463,37 @@ const CentersList = () => {
           </Button>
           <Button variant="danger" onClick={confirmDelete}>
             Delete Center
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Revoke Access Modal */}
+      <Modal show={!!revokeTarget} onHide={() => setRevokeTarget(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Revoke Center Access</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>
+            <strong>{revokeTarget?.name}</strong>'s users will be signed out
+            immediately and blocked from logging in until you restore access.
+          </p>
+          <Form.Group>
+            <Form.Label>Message shown to the center (optional)</Form.Label>
+            <Form.Control
+              as="textarea"
+              rows={3}
+              value={revokeMessage}
+              onChange={(e) => setRevokeMessage(e.target.value)}
+              placeholder="e.g. Your account is suspended. Please contact billing."
+            />
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setRevokeTarget(null)} disabled={accessSaving}>
+            Cancel
+          </Button>
+          <Button variant="warning" onClick={confirmRevoke} disabled={accessSaving}>
+            {accessSaving ? <Spinner size="sm" /> : "Revoke Access"}
           </Button>
         </Modal.Footer>
       </Modal>

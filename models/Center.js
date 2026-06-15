@@ -4,6 +4,13 @@ const centerSchema = new mongoose.Schema({
   name: { type: String, required: true },
   verificationCode: { type: String, required: true, unique: true },
   centerAdminEmail: { type: String, required: true, unique: true },
+
+  // Access control: a super admin can revoke a center. While revoked, nobody in
+  // the center can log in, and any active session is signed out and shown
+  // `revokeMessage`.
+  status: { type: String, enum: ["active", "revoked"], default: "active" },
+  revokeMessage: { type: String, default: "" },
+
   proxy: {
     provider: { type: String, default: "decodo" },
     username: { type: String },

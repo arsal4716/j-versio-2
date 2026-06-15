@@ -79,6 +79,21 @@ export const loginUser = async (credentials) => {
     throw error;
   }
 
+  // Block login if the user's center has been revoked by a super admin.
+  const roles = Array.isArray(user.roles) ? user.roles : [];
+  if (user.centerId && !roles.includes("super_admin")) {
+    const center = await Center.findById(user.centerId).select("status revokeMessage").lean();
+    if (center?.status === "revoked") {
+      const error = new Error(
+        center.revokeMessage ||
+          "Your center's access has been revoked. Please contact the administrator."
+      );
+      error.status = 403;
+      error.centerRevoked = true;
+      throw error;
+    }
+  }
+
   const token = jwt.sign(
     { id: user._id, roles: user.roles, centerId: user.centerId },
     JWT.SECRET,

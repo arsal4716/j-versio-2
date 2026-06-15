@@ -6,7 +6,8 @@ import { createCenter,
   getCenters,
   getCenterById,
   updateCenter,
-  deleteCenter, } from "../controllers/centerController.js";
+  deleteCenter,
+  setCenterAccess, } from "../controllers/centerController.js";
 import { auth, authorize } from "../middlewares/auth.js";
 import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +33,7 @@ router.post('/', upload.single('clientKeyFile'), createCenter);
 router.get('/', getCenters);
 router.get('/:id', getCenterById);
 router.put('/:id', upload.single('clientKeyFile'), updateCenter);
+router.patch('/:id/access', authorize(['super_admin']), setCenterAccess);
 router.delete('/:id', authorize(['super_admin']), deleteCenter);
 
 export default router;

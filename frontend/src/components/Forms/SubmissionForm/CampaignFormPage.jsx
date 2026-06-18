@@ -187,12 +187,21 @@ const CampaignFormPage = () => {
 
   if (loading) return <div>Loading form…</div>;
   if (error) return <div>{error}</div>;
-  const allFields = fields.some((f) => f.name === "state")
-    ? fields
-    : [
-        ...fields,
-        { name: "state", label: "State", type: "select", required: true },
-      ];
+
+  // The State field can be configured under any name the lander uses
+  // (e.g. "state" or "wpforms-2715-field_8" whose label is "State"). We detect
+  // it by name OR label and always render it as a US-states dropdown.
+  const isStateField = (f) => {
+    const n = (f?.name || "").toLowerCase();
+    const l = (f?.label || "").toLowerCase();
+    return n === "state" || /\bstate\b/.test(n) || /\bstate\b/.test(l);
+  };
+
+  const allFields = (
+    fields.some(isStateField)
+      ? fields
+      : [...fields, { name: "state", label: "State", type: "select", required: true }]
+  ).map((f) => (isStateField(f) ? { ...f, type: "select" } : f));
 
   return (
     <>
@@ -281,7 +290,7 @@ const CampaignFormPage = () => {
                   value={formData[field.name] || ""}
                   onChange={handleChange}
                   options={
-                    field.name === "state"
+                    isStateField(field)
                       ? usStates
                       : Array.isArray(field.options)
                       ? field.options

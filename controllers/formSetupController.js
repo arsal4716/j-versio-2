@@ -213,12 +213,20 @@ export const getFormSetupByCenterCampaign = async (req, res, next) => {
       });
     }
 
-    const isSuperAdmin = req.user.roles && req.user.roles.includes("super_admin");
-    if (!isSuperAdmin && (!req.user.allowedCampaigns || !req.user.allowedCampaigns.includes(campaignName))) {
-      return fail(res, {
-        message: "Access denied",
-        status: STATUS_CODES.FORBIDDEN,
-      });
+    // Access: super_admin → any. admin → their own center (needed so the
+    // records portal can resolve field-name → label for the leads table).
+    // user/agent → only campaigns explicitly assigned to them.
+    const roles = Array.isArray(req.user.roles) ? req.user.roles : [];
+    const isSuperAdmin = roles.includes("super_admin");
+    const isAdmin = roles.includes("admin");
+    if (!isSuperAdmin) {
+      if (isAdmin) {
+        if (String(req.user.centerId || "") !== String(centerId)) {
+          return fail(res, { message: "Access denied", status: STATUS_CODES.FORBIDDEN });
+        }
+      } else if (!req.user.allowedCampaigns || !req.user.allowedCampaigns.includes(campaignName)) {
+        return fail(res, { message: "Access denied", status: STATUS_CODES.FORBIDDEN });
+      }
     }
 
     return success(res, {

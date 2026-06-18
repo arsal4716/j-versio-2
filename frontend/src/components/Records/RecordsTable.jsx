@@ -135,7 +135,7 @@ export default function RecordsTable({
 
   const columns = useMemo(
     () => [
-      { title: "Time Stamp", dataIndex: "createdAt", key: "createdAt", width: 190, render: (v) => formatEST(v) },
+      { title: "TimeStamp(EST)", dataIndex: "createdAt", key: "createdAt", width: 190, render: (v) => formatEST(v, { suffix: false }) },
       { title: "Page", key: "page", width: 170, ellipsis: true, render: (_, r) => r?.metadata?.pageUrl || "—" },
       { title: "Phone Number", key: "phone", width: 140, render: (_, r) => pickFormValue(r.formData, ["phone"]) || "—" },
       { title: "IP Address", key: "ip", width: 150, ellipsis: true, render: (_, r) => r?.metadata?.ipAddress || "—" },
@@ -154,7 +154,7 @@ export default function RecordsTable({
             <Text type="secondary">No APIs</Text>
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-              {apiConfigs.map((api, idx) => (
+              {apiConfigs.map((api) => (
                 <Button
                   key={api._id}
                   type="link"
@@ -163,7 +163,7 @@ export default function RecordsTable({
                   onClick={() => setActiveApi({ apiConfig: api, record: r })}
                   title={api.apiName}
                 >
-                  {`D${idx + 1}`}
+                  {api.apiName || "API"}
                 </Button>
               ))}
             </div>

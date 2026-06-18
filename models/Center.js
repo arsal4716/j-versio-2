@@ -16,6 +16,9 @@ const centerSchema = new mongoose.Schema({
     username: { type: String },
     password: { type: String },
     type: { type: String, enum: ["zip", "state", "random"], default: "zip" },
+    // Per-center concurrency cap = this center's Decodo account thread limit.
+    // Unset -> falls back to the PROXY_MAX_CONCURRENCY env default.
+    maxConcurrency: { type: Number },
   },
   googleSheets: {
     clientKeyFile: { type: String },

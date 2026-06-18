@@ -12,6 +12,9 @@ const ACTION_VARIANT = {
   "center.create": "success",
   "center.update": "warning",
   "center.delete": "danger",
+  "submission.start": "primary",
+  "submission.success": "success",
+  "submission.failed": "danger",
 };
 
 const LogsPage = () => {
@@ -65,6 +68,9 @@ const LogsPage = () => {
             <Col md={4}>
               <Form.Select value={action} onChange={(e) => { setPage(1); setAction(e.target.value); }}>
                 <option value="">All actions</option>
+                <option value="submission.start">submission.start</option>
+                <option value="submission.success">submission.success</option>
+                <option value="submission.failed">submission.failed</option>
                 <option value="user.login">user.login</option>
                 <option value="user.create">user.create</option>
                 <option value="user.update">user.update</option>

@@ -57,7 +57,7 @@ class BrowserService {
    * Playwright applies proxy auth and referer at the context level (no request
    * interception needed), which is both faster and less detectable.
    */
-  async launchBrowserWithProxy({ proxyUrl, proxyUsername, proxyPassword, referrers }) {
+  async launchBrowserWithProxy({ proxyUrl, proxyUsername, proxyPassword, referrers, device }) {
     const { width, height } = getRandomWindowSize();
 
     const launchArgs = [
@@ -100,11 +100,24 @@ class BrowserService {
     const refList = Array.isArray(referrers) && referrers.length ? referrers : DEFAULT_REFERRERS;
     const selectedReferer = getRandomElement(refList);
 
-    const context = await browser.newContext({
-      viewport: { width: 1366, height: 768 },
+    // Match the context to the emulated device. hasTouch / isMobile / userAgent
+    // can ONLY be set at context-creation time — without hasTouch, page.tap()
+    // throws "The page does not support tap" for mobile/tablet devices.
+    const dv = device?.viewport || {};
+    const contextOptions = {
+      viewport: {
+        width: dv.width || 1366,
+        height: dv.height || 768,
+      },
+      deviceScaleFactor: dv.deviceScaleFactor || 1,
+      isMobile: !!dv.isMobile,
+      hasTouch: !!dv.hasTouch,
       ignoreHTTPSErrors: true,
       extraHTTPHeaders: { referer: selectedReferer },
-    });
+    };
+    if (device?.userAgent) contextOptions.userAgent = device.userAgent;
+
+    const context = await browser.newContext(contextOptions);
 
     // Mask the most obvious automation fingerprint.
     await context.addInitScript(() => {

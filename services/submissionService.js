@@ -8,6 +8,8 @@ import sheetService from "./sheetService.js";
 import deviceService from "./deviceService.js";
 import dncService from "./dncService.js";
 import settingsService from "./settingsService.js";
+import { acquireProxySlot } from "../utils/proxyConcurrency.js";
+import { audit } from "./auditService.js";
 import TypingHelper from "../helper/typingHelper.js";
 
 import {
@@ -34,6 +36,7 @@ class SubmissionService {
     let browser = null;
     let page = null;
     let device = null;
+    let releaseProxySlot = null;
 
     try {
       await this.validateUserAccess(user, centerId, campaignName);
@@ -43,10 +46,32 @@ class SubmissionService {
 
       submissionLog = await this.createSubmissionLog(centerId, campaignName, formData, user);
 
+      // Activity log: a submission has started (visible on the super-admin Logs
+      // page, auto-expires after 24h). Fire-and-forget; never blocks the run.
+      audit({
+        actor: user,
+        centerId,
+        action: "submission.start",
+        entity: "Submission",
+        entityId: submissionLog?._id,
+        message: `Submission started — ${campaignName}`,
+        details: {
+          campaignName,
+          zip: formData?.zip || formData?.txtZip || formData?.zipCode || "",
+          phone: formData?.phone || formData?.txtPhone || "",
+        },
+      });
+
       // DNC enforcement (defense-in-depth; the form page also checks in real time).
       // A confirmed list hit blocks the automation unless the agent explicitly
       // overrode it at submit time.
       await this.enforceDnc(centerId, campaignName, formData);
+
+      // Reserve a proxy slot for this center (each center has its own Decodo
+      // account/thread limit). Held until the browser closes so the sticky IP is
+      // counted for the whole submission. Throws a retryable error when the
+      // center is at capacity, so BullMQ re-queues with backoff.
+      releaseProxySlot = await acquireProxySlot(centerId, center?.proxy?.maxConcurrency || undefined);
 
       const proxyConfig = await proxyService.getProxyForCenter(center, formData);
 
@@ -67,6 +92,7 @@ class SubmissionService {
         proxyUsername: proxyConfig.username,
         proxyPassword: proxyConfig.password,
         referrers: eff.referrers || center?.settings?.referrers,
+        device,
       }));
 
       await browserService.emulateDevice(page, device);
@@ -145,13 +171,47 @@ class SubmissionService {
       );
 
       await this.updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults);
+
+      audit({
+        actor: user,
+        centerId,
+        action: "submission.success",
+        entity: "Submission",
+        entityId: submissionLog?._id,
+        message: `Lead submitted — ${campaignName}`,
+        details: {
+          campaignName,
+          leadId: leadId || "",
+          proxyIp: proxyConfig?.ip || "",
+        },
+      });
+
       return this.formatSuccessResponse(submissionResult, sheetResults);
     } catch (error) {
       logger.error("Form submission failed", { error: error.message });
       if (submissionLog) await this.updateSubmissionLogFailure(submissionLog, error);
+
+      audit({
+        actor: user,
+        centerId,
+        action: "submission.failed",
+        entity: "Submission",
+        entityId: submissionLog?._id,
+        message: `Submission failed — ${error.message}`,
+        details: { campaignName, error: error.message, code: error.code || "" },
+      });
+
       throw error;
     } finally {
       await browserService.closeBrowser(browser);
+      // Free the center's proxy slot so the next queued submission can run.
+      if (releaseProxySlot) {
+        try {
+          await releaseProxySlot();
+        } catch (e) {
+          logger.warn("Failed to release proxy slot", { error: e?.message });
+        }
+      }
     }
   }
 

@@ -22,6 +22,10 @@ async function listPortalRecords({ centerId, campaignName, startDate, endDate, c
   const match = {
     centerId: new mongoose.Types.ObjectId(centerId),
     campaignName,
+    // Only real leads: a submission counts when the form was actually filled and
+    // submitted on the target site. Failed/pending attempts (e.g. proxy errors)
+    // are activity, not leads, and live in the Activity Logs page instead.
+    result: "success",
   };
 
   if (userId) match.userId = new mongoose.Types.ObjectId(userId);

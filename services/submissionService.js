@@ -9,6 +9,7 @@ import deviceService from "./deviceService.js";
 import dncService from "./dncService.js";
 import settingsService from "./settingsService.js";
 import { acquireProxySlot } from "../utils/proxyConcurrency.js";
+import { audit } from "./auditService.js";
 import TypingHelper from "../helper/typingHelper.js";
 
 import {
@@ -44,6 +45,22 @@ class SubmissionService {
       const formSetup = await this.getFormSetup(centerId, campaignName);
 
       submissionLog = await this.createSubmissionLog(centerId, campaignName, formData, user);
+
+      // Activity log: a submission has started (visible on the super-admin Logs
+      // page, auto-expires after 24h). Fire-and-forget; never blocks the run.
+      audit({
+        actor: user,
+        centerId,
+        action: "submission.start",
+        entity: "Submission",
+        entityId: submissionLog?._id,
+        message: `Submission started — ${campaignName}`,
+        details: {
+          campaignName,
+          zip: formData?.zip || formData?.txtZip || formData?.zipCode || "",
+          phone: formData?.phone || formData?.txtPhone || "",
+        },
+      });
 
       // DNC enforcement (defense-in-depth; the form page also checks in real time).
       // A confirmed list hit blocks the automation unless the agent explicitly
@@ -153,10 +170,36 @@ class SubmissionService {
       );
 
       await this.updateSubmissionLogSuccess(submissionLog, submissionResult, sheetResults);
+
+      audit({
+        actor: user,
+        centerId,
+        action: "submission.success",
+        entity: "Submission",
+        entityId: submissionLog?._id,
+        message: `Lead submitted — ${campaignName}`,
+        details: {
+          campaignName,
+          leadId: leadId || "",
+          proxyIp: proxyConfig?.ip || "",
+        },
+      });
+
       return this.formatSuccessResponse(submissionResult, sheetResults);
     } catch (error) {
       logger.error("Form submission failed", { error: error.message });
       if (submissionLog) await this.updateSubmissionLogFailure(submissionLog, error);
+
+      audit({
+        actor: user,
+        centerId,
+        action: "submission.failed",
+        entity: "Submission",
+        entityId: submissionLog?._id,
+        message: `Submission failed — ${error.message}`,
+        details: { campaignName, error: error.message, code: error.code || "" },
+      });
+
       throw error;
     } finally {
       await browserService.closeBrowser(browser);

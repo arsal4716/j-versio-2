@@ -52,7 +52,15 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 if (process.env.NODE_ENV !== "test") {
-  app.use(morgan("combined", { stream: logger.stream }));
+  // Only log problem requests (4xx/5xx). Successful page loads, static assets
+  // (videos/images), polling and bot scans (all <400) are skipped to keep the
+  // terminal/log files focused on real issues.
+  app.use(
+    morgan("combined", {
+      stream: logger.stream,
+      skip: (req, res) => res.statusCode < 400,
+    })
+  );
 }
 
 app.use("/uploads", express.static("uploads"));

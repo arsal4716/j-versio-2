@@ -72,8 +72,22 @@ async function verifyProxyIp(proxyUrl, ipCheckUrl) {
     });
     return res?.data?.proxy?.ip ? res.data.proxy.ip : null;
   } catch (err) {
+    // Log the EXACT upstream response so proxy issues are diagnosable instead of
+    // hidden behind a generic message. Truncate any body so logs stay readable.
+    let body = err?.response?.data;
+    if (body && typeof body === "object") body = JSON.stringify(body);
+    if (typeof body === "string" && body.length > 300) body = body.slice(0, 300) + "…";
+    logger.error("Proxy verify failed (raw upstream)", {
+      status: err?.response?.status ?? null,
+      code: err?.code || null,
+      message: err?.message || null,
+      body: body || null,
+    });
+
     if (isProxyAuthError(err)) {
-      throw new ProxyError(PROXY_EXPIRED_MESSAGE);
+      const e = new ProxyError(PROXY_EXPIRED_MESSAGE);
+      e.upstreamStatus = err?.response?.status ?? "407";
+      throw e;
     }
     throw err;
   }
@@ -295,6 +309,8 @@ class ProxyService {
     const ipCheckUrl = getDecodoIpCheckUrl();
     const proxyHost = `${DECODO_HOST}:${DECODO_PORT}`;
     const zipCode = extractZipCode(formData);
+    // Only call the account "expired" if BOTH zip and state fail with auth (407).
+    let sawAuthError = false;
 
     // ---- ZIP (preferred) ----
     if (zipCode) {
@@ -319,7 +335,7 @@ class ProxyService {
           sessionId,
         };
       } catch (e) {
-        if (e?.code === "PROXY_ERROR") throw e; // expired account -> don't mask
+        if (e?.code === "PROXY_ERROR") sawAuthError = true;
         logger.warn("ZIP session proxy failed, falling back to state", {
           zipCode,
           error: e?.message,
@@ -343,8 +359,15 @@ class ProxyService {
       dur: SESSION_DURATION_MIN,
       session: sessionId,
     });
-    const ip = await verifyProxyIp(`http://${username}:${password}@${proxyHost}`, ipCheckUrl);
+    let ip;
+    try {
+      ip = await verifyProxyIp(`http://${username}:${password}@${proxyHost}`, ipCheckUrl);
+    } catch (e) {
+      if (e?.code === "PROXY_ERROR") sawAuthError = true;
+      throw e;
+    }
     if (!ip) {
+      if (sawAuthError) throw new ProxyError(PROXY_EXPIRED_MESSAGE);
       throw new BrowserError(`State session proxy failed for "${stateName}" (no IP returned)`);
     }
     logger.info("STATE session proxy verified", { ip, stateName });
@@ -380,7 +403,7 @@ class ProxyService {
       );
     }
 
-    logger.info("Proxy selection started", {
+    logger.debug("Proxy selection started", {
       centerId: center?._id?.toString?.() || center?._id,
       provider,
       type,
@@ -394,6 +417,11 @@ class ProxyService {
 
     const ipCheckUrl = getDecodoIpCheckUrl();
     const zipCode = extractZipCode(formData);
+    // Track whether the upstream proxy rejected auth (407). We only conclude the
+    // account is "expired" if BOTH the ZIP and every state candidate fail this
+    // way — a single ZIP 407 might just be a bad zip-targeting username, so we
+    // still try the state endpoint before giving up.
+    let sawAuthError = false;
 
     // ---------------- ZIP MODE (or AUTO) ----------------
     if (type === "zip" || type === "auto") {
@@ -404,7 +432,7 @@ class ProxyService {
           const proxyHost = `us.decodo.com:${port}`;
           const fullProxyUrl = `http://${proxyUsername}:${password}@${proxyHost}`;
 
-          logger.info("Trying ZIP proxy", {
+          logger.debug("Trying ZIP proxy", {
             zipCode,
             port,
             proxyHost,
@@ -427,13 +455,18 @@ class ProxyService {
             zipCode,
           };
         } catch (e) {
-          // An expired/unauthorized proxy account will not be fixed by the state
-          // fallback (same credentials) — surface it immediately.
-          if (e?.code === "PROXY_ERROR") throw e;
-          logger.warn("ZIP proxy failed, falling back to state proxy", {
-            zipCode,
-            error: e?.message,
-          });
+          if (e?.code === "PROXY_ERROR") {
+            sawAuthError = true;
+            logger.warn("ZIP proxy auth-rejected (407) — still trying state", {
+              zipCode,
+              error: e?.message,
+            });
+          } else {
+            logger.warn("ZIP proxy failed, falling back to state proxy", {
+              zipCode,
+              error: e?.message,
+            });
+          }
         }
       } else {
         logger.warn("ZIP not provided, switching to state proxy fallback");
@@ -472,7 +505,7 @@ class ProxyService {
       try {
         const fullProxyUrl = `http://${u}:${password}@${proxyHost}`;
 
-        logger.info("Trying STATE proxy (candidate)", {
+        logger.debug("Trying STATE proxy (candidate)", {
           stateName,
           statePort,
           proxyHost,
@@ -495,7 +528,7 @@ class ProxyService {
           statePort,
         };
       } catch (e) {
-        if (e?.code === "PROXY_ERROR") throw e;
+        if (e?.code === "PROXY_ERROR") sawAuthError = true;
         lastErr = e;
         logger.warn("STATE proxy candidate failed", {
           stateName,
@@ -505,6 +538,11 @@ class ProxyService {
       }
     }
 
+    // Both ZIP and every state candidate failed. Only call it "expired" if the
+    // failures were auth rejections (407); otherwise surface the real error.
+    if (sawAuthError) {
+      throw new ProxyError(PROXY_EXPIRED_MESSAGE);
+    }
     throw new BrowserError(
       `No available proxy found. ZIP failed and state proxy failed for "${stateName}". ` +
         `Last error: ${lastErr?.message || "Unknown"}`,

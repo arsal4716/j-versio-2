@@ -12,11 +12,15 @@ const EST_OPTIONS = {
   hour12: true,
 };
 
-export function formatEST(value) {
+// `suffix` (default true) appends " EST" to the formatted value. Pass
+// { suffix: false } when the surrounding label already says EST (e.g. a column
+// header "TimeStamp(EST)") so the value reads "06/18/2026, 05:30:28 PM".
+export function formatEST(value, { suffix = true } = {}) {
   if (!value) return "";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return `${new Intl.DateTimeFormat("en-US", EST_OPTIONS).format(d)} EST`;
+  const formatted = new Intl.DateTimeFormat("en-US", EST_OPTIONS).format(d);
+  return suffix ? `${formatted} EST` : formatted;
 }
 
 export default formatEST;

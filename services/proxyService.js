@@ -199,6 +199,16 @@ const stateAbbrevToName = {
   WY: "Wyoming",
 };
 
+// A real US ZIP is 00501–99950. Placeholders like "00000" are 5 digits but are
+// NOT routable — the proxy returns 502 "no suitable exit node" for them — so we
+// treat them as missing and go straight to the state proxy.
+function isValidUsZip(z) {
+  const s = String(z ?? "").trim();
+  if (!/^\d{5}$/.test(s)) return false;
+  const n = Number(s);
+  return n >= 501 && n <= 99950;
+}
+
 function extractZipCode(formData) {
   const z =
     formData?.zipCode ??
@@ -208,14 +218,11 @@ function extractZipCode(formData) {
     formData?.Zip ??
     formData?.ZIP;
 
-  if (typeof z === "string" && /^\d{5}$/.test(z.trim())) return z.trim();
-  if (typeof z === "number" && /^\d{5}$/.test(String(z))) return String(z);
+  if (isValidUsZip(z)) return String(z).trim();
 
   for (const key in formData || {}) {
     const value = formData[key];
-    if (typeof value === "string" && /^\d{5}$/.test(value.trim())) {
-      return value.trim();
-    }
+    if (isValidUsZip(value)) return String(value).trim();
   }
   return null;
 }
@@ -365,6 +372,8 @@ class ProxyService {
       );
     }
     const stateCode = stateNameToAbbr[stateName] || "";
+
+    // (a) Username-based state targeting on the session host (us.decodo.com).
     const sessionId = genSessionId(`st${stateCode || "x"}`);
     const username = fillTemplate(STATE_USER_TEMPLATE, {
       user: usernameBase,
@@ -373,27 +382,69 @@ class ProxyService {
       dur: SESSION_DURATION_MIN,
       session: sessionId,
     });
-    let ip;
     try {
-      ip = await verifyProxyIp(`http://${username}:${password}@${proxyHost}`, ipCheckUrl);
+      const ip = await verifyProxyIp(`http://${username}:${password}@${proxyHost}`, ipCheckUrl);
+      if (ip) {
+        logger.info("STATE session proxy verified", { ip, stateName });
+        return {
+          proxyUrl: `http://${proxyHost}`,
+          username,
+          password,
+          ip,
+          mode: "state",
+          state: stateName,
+          sessionId,
+        };
+      }
+      logger.warn("STATE session proxy returned no IP; trying port-based state proxy", { stateName });
     } catch (e) {
+      // Don't give up on a non-auth failure (e.g. 502 "no exit node") — the
+      // upstream session-style state targeting can fail while the proven
+      // port-based state.decodo.com path still works. Only an auth (407) error
+      // is fatal across the board.
       if (e?.code === "PROXY_ERROR") sawAuthError = true;
-      throw e;
+      logger.warn("STATE session proxy failed; trying port-based state proxy", {
+        stateName,
+        error: e?.message,
+      });
     }
-    if (!ip) {
-      if (sawAuthError) throw new ProxyError(PROXY_EXPIRED_MESSAGE);
-      throw new BrowserError(`State session proxy failed for "${stateName}" (no IP returned)`);
+
+    // (b) Legacy port-based state proxy (state.decodo.com:{statePort}) — the
+    // port selects the state, so a plain username is used. This is the known
+    // working path and is tried whenever the session-style state attempt fails.
+    const statePort = statePortMapping[stateName];
+    if (statePort) {
+      const portHost = `state.decodo.com:${statePort}`;
+      const candidates = [`${usernameBase}`, `user-${usernameBase}`];
+      for (const u of candidates) {
+        try {
+          const ip = await verifyProxyIp(`http://${u}:${password}@${portHost}`, ipCheckUrl);
+          if (!ip) continue;
+          logger.info("STATE port proxy verified", { ip, stateName, statePort });
+          return {
+            proxyUrl: `http://${portHost}`,
+            username: u,
+            password,
+            ip,
+            mode: "state",
+            state: stateName,
+            statePort,
+          };
+        } catch (e) {
+          if (e?.code === "PROXY_ERROR") sawAuthError = true;
+          logger.warn("STATE port proxy candidate failed", {
+            stateName,
+            statePort,
+            error: e?.message,
+          });
+        }
+      }
     }
-    logger.info("STATE session proxy verified", { ip, stateName });
-    return {
-      proxyUrl: `http://${proxyHost}`,
-      username,
-      password,
-      ip,
-      mode: "state",
-      state: stateName,
-      sessionId,
-    };
+
+    if (sawAuthError) throw new ProxyError(PROXY_EXPIRED_MESSAGE);
+    throw new BrowserError(
+      `State proxy failed for "${stateName}" (session and port modes both failed).`
+    );
   }
 
   // Legacy port-pool strategy (PROXY_MODE=port).

@@ -199,6 +199,16 @@ const stateAbbrevToName = {
   WY: "Wyoming",
 };
 
+// A real US ZIP is 00501–99950. Placeholders like "00000" are 5 digits but are
+// NOT routable — the proxy returns 502 "no suitable exit node" for them — so we
+// treat them as missing and go straight to the state proxy.
+function isValidUsZip(z) {
+  const s = String(z ?? "").trim();
+  if (!/^\d{5}$/.test(s)) return false;
+  const n = Number(s);
+  return n >= 501 && n <= 99950;
+}
+
 function extractZipCode(formData) {
   const z =
     formData?.zipCode ??
@@ -208,14 +218,11 @@ function extractZipCode(formData) {
     formData?.Zip ??
     formData?.ZIP;
 
-  if (typeof z === "string" && /^\d{5}$/.test(z.trim())) return z.trim();
-  if (typeof z === "number" && /^\d{5}$/.test(String(z))) return String(z);
+  if (isValidUsZip(z)) return String(z).trim();
 
   for (const key in formData || {}) {
     const value = formData[key];
-    if (typeof value === "string" && /^\d{5}$/.test(value.trim())) {
-      return value.trim();
-    }
+    if (isValidUsZip(value)) return String(value).trim();
   }
   return null;
 }

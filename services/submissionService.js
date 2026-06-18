@@ -186,7 +186,7 @@ class SubmissionService {
         },
       });
 
-      return this.formatSuccessResponse(submissionResult, sheetResults);
+      return this.formatSuccessResponse(submissionResult, sheetResults, eff?.onformPopup);
     } catch (error) {
       logger.error("Form submission failed", { error: error.message });
       if (submissionLog) await this.updateSubmissionLogFailure(submissionLog, error);
@@ -243,12 +243,13 @@ class SubmissionService {
         deviceDistribution,
         referrers,
         randomTypingMistakes: c.typing?.randomTypingMistakes !== false,
+        onformPopup: c.onformPopup || {},
       };
     } catch (e) {
       logger.warn("Failed to resolve effective settings; using center defaults", {
         error: e?.message,
       });
-      return { randomTypingMistakes: true };
+      return { randomTypingMistakes: true, onformPopup: {} };
     }
   }
 
@@ -591,7 +592,18 @@ class SubmissionService {
     await submissionLog.save();
   }
 
-  formatSuccessResponse(submissionResult, sheetResults) {
+  formatSuccessResponse(submissionResult, sheetResults, onformPopup) {
+    // Which captured values the on-form result popup is allowed to display, per
+    // the campaign/center "Onform Popup" toggles. Undefined keys fall back to
+    // the SettingsConfig schema defaults (ip/leadId/api shown, trustedform hidden).
+    const op = onformPopup || {};
+    const display = {
+      ipAddress: op.ipAddress !== false,
+      leadId: op.leadId !== false,
+      trustedform: op.trustedform === true,
+      apiResponse: op.apiResponse !== false,
+    };
+
     return {
       success: true,
       message: "Form submitted successfully",
@@ -604,6 +616,7 @@ class SubmissionService {
         pageUrl: submissionResult.pageUrl,
         deviceType: submissionResult.deviceType,
         timestamp: new Date().toISOString(),
+        display,
         sheets: {
           masterSaved: sheetResults?.master?.success || false,
           adminSaved: sheetResults?.admin?.success || false,

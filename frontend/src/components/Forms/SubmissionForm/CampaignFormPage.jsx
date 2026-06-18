@@ -267,19 +267,28 @@ const CampaignFormPage = () => {
             </Card>
           )}
 
-          {!submissionState.loading && submissionState.success && submissionState.data && (
-            <Alert variant="success" className="mb-3" onClose={() => dispatch(resetSubmissionState())} dismissible>
-              <div className="fw-bold mb-2">Submission Result</div>
-              <div className="d-flex flex-column gap-1">
-                <ResultRow label="IP Address" value={submissionState.data.ipAddress} />
-                <ResultRow label="Jornaya Lead ID" value={submissionState.data.leadId} />
-                {submissionState.data.placeId ? (
-                  <ResultRow label="Place ID" value={submissionState.data.placeId} />
-                ) : null}
-                <ResultRow label="TrustedForm" value={submissionState.data.trustedForm} />
-              </div>
-            </Alert>
-          )}
+          {!submissionState.loading && submissionState.success && submissionState.data && (() => {
+            // Honour the "Onform Popup" toggles: only show a value when its toggle
+            // is enabled. `display` is absent on older results -> show everything
+            // (backward compatible).
+            const display = submissionState.data.display;
+            const showIp = !display || display.ipAddress;
+            const showLead = !display || display.leadId;
+            const showTf = !display || display.trustedform;
+            return (
+              <Alert variant="success" className="mb-3" onClose={() => dispatch(resetSubmissionState())} dismissible>
+                <div className="fw-bold mb-2">Submission Result</div>
+                <div className="d-flex flex-column gap-1">
+                  {showIp && <ResultRow label="IP Address" value={submissionState.data.ipAddress} />}
+                  {showLead && <ResultRow label="Jornaya Lead ID" value={submissionState.data.leadId} />}
+                  {showLead && submissionState.data.placeId ? (
+                    <ResultRow label="Place ID" value={submissionState.data.placeId} />
+                  ) : null}
+                  {showTf && <ResultRow label="TrustedForm" value={submissionState.data.trustedForm} />}
+                </div>
+              </Alert>
+            );
+          })()}
 
           <Form onSubmit={handleSubmit}>
             <Row>

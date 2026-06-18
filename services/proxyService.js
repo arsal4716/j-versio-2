@@ -232,7 +232,21 @@ function extractState(formData) {
     formData?.state_code ??
     formData?.["wpforms-2715-field_8"];
 
-  return normalizeStateName(st);
+  const direct = normalizeStateName(st);
+  if (direct) return direct;
+
+  // Fallback: the State field may be configured under a lander-specific name
+  // (e.g. "wpforms-2715-field_8"). Scan any value that is a full US state name
+  // so the state proxy fallback still works. We only accept strings longer than
+  // a 2-letter abbreviation here to avoid false positives from initials/codes.
+  for (const key in formData || {}) {
+    const v = formData[key];
+    if (typeof v === "string" && v.trim().length > 2) {
+      const norm = normalizeStateName(v);
+      if (norm) return norm;
+    }
+  }
+  return null;
 }
 
 class ProxyService {
@@ -274,43 +288,58 @@ class ProxyService {
     // ---------------- ZIP MODE (or AUTO) ----------------
     if (type === "zip" || type === "auto") {
       if (zipCode) {
-        try {
-          const port = getNextPort();
-          const proxyUsername = `user-${usernameBase}-sessionduration-2-country-us-zip-${zipCode}`;
-          const proxyHost = `us.decodo.com:${port}`;
-          const fullProxyUrl = `http://${proxyUsername}:${password}@${proxyHost}`;
+        // A 502 / "no suitable exit node" from the upstream is frequently
+        // specific to one exit port, not the ZIP itself. Retry on a few fresh
+        // ports before giving up and falling back to the state proxy.
+        const ZIP_PORT_ATTEMPTS = 3;
+        for (let attempt = 1; attempt <= ZIP_PORT_ATTEMPTS; attempt++) {
+          try {
+            const port = getNextPort();
+            const proxyUsername = `user-${usernameBase}-sessionduration-2-country-us-zip-${zipCode}`;
+            const proxyHost = `us.decodo.com:${port}`;
+            const fullProxyUrl = `http://${proxyUsername}:${password}@${proxyHost}`;
 
-          logger.info("Trying ZIP proxy", {
-            zipCode,
-            port,
-            proxyHost,
-            usernameSample: proxyUsername.slice(0, 20) + "***",
-          });
+            logger.info("Trying ZIP proxy", {
+              zipCode,
+              port,
+              proxyHost,
+              attempt,
+              maxAttempts: ZIP_PORT_ATTEMPTS,
+              usernameSample: proxyUsername.slice(0, 20) + "***",
+            });
 
-          const ip = await verifyProxyIp(fullProxyUrl, ipCheckUrl);
+            const ip = await verifyProxyIp(fullProxyUrl, ipCheckUrl);
 
-          if (!ip)
-            throw new Error("Proxy verification failed (no IP returned)");
+            if (!ip)
+              throw new Error("Proxy verification failed (no IP returned)");
 
-          logger.info("ZIP proxy verified", { ip, zipCode, port });
+            logger.info("ZIP proxy verified", { ip, zipCode, port, attempt });
 
-          return {
-            proxyUrl: `http://${proxyHost}`, // host only, browserService uses separate creds
-            username: proxyUsername,
-            password,
-            ip,
-            mode: "zip",
-            zipCode,
-          };
-        } catch (e) {
-          // An expired/unauthorized proxy account will not be fixed by the state
-          // fallback (same credentials) — surface it immediately.
-          if (e?.code === "PROXY_ERROR") throw e;
-          logger.warn("ZIP proxy failed, falling back to state proxy", {
-            zipCode,
-            error: e?.message,
-          });
+            return {
+              proxyUrl: `http://${proxyHost}`, // host only, browserService uses separate creds
+              username: proxyUsername,
+              password,
+              ip,
+              mode: "zip",
+              zipCode,
+            };
+          } catch (e) {
+            // An expired/unauthorized proxy account will not be fixed by
+            // retrying or by the state fallback (same credentials) — surface it
+            // immediately. Everything else (502/no-exit-node/timeout) retries
+            // then falls through to the state proxy.
+            if (e?.code === "PROXY_ERROR") throw e;
+            logger.warn("ZIP proxy attempt failed", {
+              zipCode,
+              attempt,
+              maxAttempts: ZIP_PORT_ATTEMPTS,
+              error: e?.message,
+            });
+          }
         }
+        logger.warn("All ZIP proxy attempts failed, falling back to state proxy", {
+          zipCode,
+        });
       } else {
         logger.warn("ZIP not provided, switching to state proxy fallback");
       }

@@ -189,6 +189,30 @@ const SettingsModal = ({ show, onHide, centerId, campaignName = null }) => {
                   </Button>
                 </Col>
               </Row>
+
+              <div className="dnc-upload-help mt-2 small text-muted">
+                <div className="fw-semibold mb-1">Two ways to use the Internal DNC List:</div>
+                <ol className="mb-2 ps-3">
+                  <li>
+                    <strong>API key</strong> — enable a provider above and paste its API key, or
+                  </li>
+                  <li>
+                    <strong>Upload your own numbers</strong> — use the button above to import a file.
+                  </li>
+                </ol>
+                <div className="mb-1">
+                  <strong>Accepted file formats:</strong> CSV, XLSX/XLS, or TXT.
+                </div>
+                <div className="mb-1">
+                  <strong>Column:</strong> a header named <code>phone</code> is recommended, but not
+                  required — phone numbers are detected automatically from any column.
+                </div>
+                <div>
+                  Any US phone format works: <code>(555) 123-4567</code>, <code>555-123-4567</code>,
+                  {" "}<code>5551234567</code>, or <code>+15551234567</code>. Duplicates and invalid
+                  numbers are skipped automatically.
+                </div>
+              </div>
             </Section>
 
             <Section title="Bot Detection">

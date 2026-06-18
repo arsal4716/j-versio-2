@@ -109,17 +109,39 @@ const devices = {
     },
   ],
 };
+// Normalize a device distribution into plain weights, accepting BOTH shapes:
+//   - flat numbers:        { desktop: 60, tablet: 20, mobile: 20 }
+//   - settings-panel form: { desktop: { enabled, percentage }, ... }
+// A device whose toggle is unchecked (enabled === false) is forced to 0 so it
+// can NEVER be selected for a submission. Negative/NaN values clamp to 0.
+function normalizeDistribution(distribution) {
+  const d = distribution || {};
+  const out = {};
+  for (const k of ["desktop", "tablet", "mobile"]) {
+    const v = d[k];
+    if (v && typeof v === "object") {
+      out[k] = v.enabled === false ? 0 : Math.max(0, Number(v.percentage) || 0);
+    } else {
+      out[k] = Math.max(0, Number(v) || 0);
+    }
+  }
+  return out;
+}
+
 function pickWeighted(distribution) {
-  const d = distribution || { desktop: 60, tablet: 20, mobile: 20 };
-  const desktop = Number(d.desktop ?? 60);
-  const tablet = Number(d.tablet ?? 20);
-  const mobile = Number(d.mobile ?? 20);
+  let d = normalizeDistribution(distribution);
+  let total = d.desktop + d.tablet + d.mobile;
 
-  const total = desktop + tablet + mobile;
+  // Only fall back to the default mix when nothing is enabled at all — never
+  // let a disabled/0% device slip back in.
+  if (total <= 0) {
+    d = { desktop: 60, tablet: 20, mobile: 20 };
+    total = 100;
+  }
+
   const r = Math.random() * total;
-
-  if (r < desktop) return "desktop";
-  if (r < desktop + tablet) return "tablet";
+  if (r < d.desktop) return "desktop";
+  if (r < d.desktop + d.tablet) return "tablet";
   return "mobile";
 }
 

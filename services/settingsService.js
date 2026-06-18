@@ -90,7 +90,16 @@ class SettingsService {
       ...scope,
       updatedBy: user._id,
     };
+    // Strip fields that must never be written from a client patch. In
+    // particular `createdBy` is set only via $setOnInsert below — leaving it in
+    // $set as well makes MongoDB throw "Updating the path 'createdBy' would
+    // create a conflict at 'createdBy'". The UI sends back the whole settings
+    // doc (including these), so we drop them here.
     delete update._id;
+    delete update.createdBy;
+    delete update.createdAt;
+    delete update.updatedAt;
+    delete update.__v;
 
     const doc = await SettingsConfig.findOneAndUpdate(
       scope,

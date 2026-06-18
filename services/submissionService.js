@@ -92,6 +92,7 @@ class SubmissionService {
         proxyUsername: proxyConfig.username,
         proxyPassword: proxyConfig.password,
         referrers: eff.referrers || center?.settings?.referrers,
+        device,
       }));
 
       await browserService.emulateDevice(page, device);

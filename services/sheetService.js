@@ -95,26 +95,62 @@ function sanitizeCenterName(name) {
     .replace(/\s+/g, "_");
 }
 
+// Returns the first JSON file found in a directory (any filename — sheet2.json,
+// client-key.json, 3883829.json, etc.), preferring a conventional name when
+// several exist. Used so an operator can drop a center's service-account key
+// into sheets/<centerName>/ without caring what it's called.
+function firstJsonInDir(dir) {
+  try {
+    const full = absPath(dir);
+    const stat = fs.statSync(full);
+    if (!stat.isDirectory()) return null;
+    const jsons = fs
+      .readdirSync(full)
+      .filter((f) => f.toLowerCase().endsWith(".json"));
+    if (!jsons.length) return null;
+    const preferred = jsons.find((f) => /(google|client|service|account)?[-_]?key/i.test(f));
+    return path.join(dir, preferred || jsons[0]);
+  } catch {
+    return null;
+  }
+}
+
 function resolveCenterKeyFile(center) {
   const gs = center?.googleSheets || {};
   const direct = gs.clientKeyFile;
 
+  // An explicit, existing path always wins.
   if (direct && fileExists(direct)) return direct;
 
   const code = String(center?.verificationCode || "").trim();
   const name = String(center?.name || "").trim();
   const safeName = sanitizeCenterName(name);
 
-  // Canonical location written by the upload flow.
-  const byStorage = safeName ? `storage/centers/${safeName}/google-key.json` : null;
-  if (byStorage && fileExists(byStorage)) return byStorage;
+  // Any JSON file dropped into the center's folder (manual upload or the form
+  // upload, which now also lands here). Both the raw and the sanitized center
+  // name are checked so "Broad Center" works whether the folder uses a space or
+  // an underscore.
+  const dirs = [
+    name && `sheets/${name}`,
+    safeName && safeName !== name && `sheets/${safeName}`,
+    code && `sheets/${code}`,
+    safeName && `storage/centers/${safeName}`,
+  ].filter(Boolean);
 
-  // Legacy locations (backward compatibility).
-  const byCode = code ? `sheets/${code}/client-key.json` : null;
-  if (byCode && fileExists(byCode)) return byCode;
+  for (const d of dirs) {
+    const found = firstJsonInDir(d);
+    if (found) return found;
+  }
 
-  const byName = name ? `sheets/${name}/client-key.json` : null;
-  if (byName && fileExists(byName)) return byName;
+  // Legacy explicit filenames (backward compatibility).
+  const legacy = [
+    safeName && `storage/centers/${safeName}/google-key.json`,
+    code && `sheets/${code}/client-key.json`,
+    name && `sheets/${name}/client-key.json`,
+  ].filter(Boolean);
+  for (const p of legacy) {
+    if (fileExists(p)) return p;
+  }
 
   // Global super-admin key fallback so every center can sync without its own key.
   const global = globalKeyFile();

@@ -64,6 +64,16 @@ if (process.env.NODE_ENV !== "test") {
 }
 
 app.use("/uploads", express.static("uploads"));
+
+// The `sheets` folder holds Google service-account keys (admin.json and each
+// center's *.json). These must NEVER be downloadable over HTTP, so block any
+// request for a JSON file before the static handler can serve it.
+app.use("/sheets", (req, res, next) => {
+  if (/\.json$/i.test(req.path)) {
+    return res.status(404).json({ success: false, message: "Not found" });
+  }
+  next();
+});
 app.use("/sheets", express.static("sheets"));
 
 /* ---------------- health ---------------- */

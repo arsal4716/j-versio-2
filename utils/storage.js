@@ -1,8 +1,10 @@
 // backend/utils/storage.js
 // Persists per-center Google service-account keys to a stable location:
-//   storage/centers/{sanitized-center-name}/google-key.json
-// Writing the validated content (rather than fs.rename) avoids cross-device
-// EXDEV failures and guarantees the stored file is valid JSON.
+//   sheets/{sanitized-center-name}/google-key.json
+// This is the same folder an operator can drop a key into manually (any *.json
+// filename works — the sheet service scans the folder). Writing the validated
+// content (rather than fs.rename) avoids cross-device EXDEV failures and
+// guarantees the stored file is valid JSON.
 import fs from "fs";
 import path from "path";
 
@@ -16,7 +18,7 @@ export function sanitizeName(name) {
 }
 
 export const centerKeyPath = (centerName) =>
-  path.join("storage", "centers", sanitizeName(centerName), "google-key.json");
+  path.join("sheets", sanitizeName(centerName), "google-key.json");
 
 /**
  * Validates and stores an uploaded service-account key for a center.

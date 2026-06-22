@@ -291,6 +291,16 @@ export const updateCenter = async (req, res, next) => {
         ...(req.body.googleSheets || {}),
         clientKeyFile: savedPath,
       };
+    } else if (req.body.googleSheets) {
+      // No new key in this edit: merge onto the stored googleSheets and PRESERVE
+      // the existing clientKeyFile, otherwise a normal save (which $set-replaces
+      // the whole googleSheets object) would silently wipe the center's key.
+      const existingGs = center.googleSheets?.toObject?.() || center.googleSheets || {};
+      req.body.googleSheets = {
+        ...existingGs,
+        ...req.body.googleSheets,
+        clientKeyFile: existingGs.clientKeyFile || null,
+      };
     }
 
     // Enforce globally-unique center name on rename (case-insensitive).

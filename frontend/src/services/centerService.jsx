@@ -9,13 +9,16 @@ export const centerService = {
     formData.append("verificationCode", centerData.verificationCode || "");
     formData.append("centerAdminEmail", centerData.centerAdminEmail || "");
 
-    // Objects
-    if (centerData.googleSheets) {
-      formData.append(
-        "googleSheets",
-        JSON.stringify(centerData.googleSheets)
-      );
-    }
+    // The uploaded Google key lives at googleSheets.clientKeyFile in the form.
+    // Multer expects the File under the top-level `clientKeyFile` field, and a
+    // File would serialize to "{}" inside the JSON — so pull it out first.
+    const gs = { ...(centerData.googleSheets || {}) };
+    const keyFile =
+      (gs.clientKeyFile instanceof File && gs.clientKeyFile) ||
+      (centerData.clientKeyFile instanceof File && centerData.clientKeyFile) ||
+      null;
+    delete gs.clientKeyFile;
+    formData.append("googleSheets", JSON.stringify(gs));
 
     if (centerData.settings) {
       formData.append("settings", JSON.stringify(centerData.settings));
@@ -29,9 +32,8 @@ export const centerService = {
       formData.append("campaigns", JSON.stringify(centerData.campaigns));
     }
 
-    // File (top-level, correct)
-    if (centerData.clientKeyFile instanceof File) {
-      formData.append("clientKeyFile", centerData.clientKeyFile);
+    if (keyFile) {
+      formData.append("clientKeyFile", keyFile);
     }
 
     const response = await api.post("/centers", formData, {
@@ -47,14 +49,34 @@ export const centerService = {
   updateCenter: async (id, centerData) => {
     const formData = new FormData();
 
+    // Pull the nested key File out so it's sent under the field name multer
+    // expects and never serialized into the googleSheets JSON.
+    let keyFile = null;
     for (const [key, value] of Object.entries(centerData)) {
       if (value === undefined || value === null) continue;
+
+      if (key === "clientKeyFile") {
+        if (value instanceof File) keyFile = value;
+        continue;
+      }
+
+      if (key === "googleSheets" && typeof value === "object") {
+        const gs = { ...value };
+        if (gs.clientKeyFile instanceof File) keyFile = gs.clientKeyFile;
+        delete gs.clientKeyFile;
+        formData.append("googleSheets", JSON.stringify(gs));
+        continue;
+      }
 
       if (typeof value === "object" && !(value instanceof File)) {
         formData.append(key, JSON.stringify(value));
       } else {
         formData.append(key, value);
       }
+    }
+
+    if (keyFile) {
+      formData.append("clientKeyFile", keyFile);
     }
 
     const response = await api.put(`/centers/${id}`, formData, {

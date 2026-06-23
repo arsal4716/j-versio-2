@@ -30,6 +30,26 @@ function makeFallbackLeadId() {
   return `fallback_${ts}_${r}`;
 }
 
+// Industry-standard ids for the hidden tracking fields on a lander. A campaign
+// can override any of these in FormSetup.captureSelectors when its lander differs.
+const DEFAULT_CAPTURE = {
+  leadId: "#leadid_token",
+  tfCert: "#xxTrustedFormCertUrl_0",
+  tfToken: "#xxTrustedFormToken_0",
+  tfPing: "#xxTrustedFormPingUrl_0",
+  userIp: "#user_ip",
+};
+
+// Page-load + warm-up timing (env-tunable so speed can be adjusted without a
+// code change). Default to domcontentloaded — the lander HTML/CSS is ready but
+// we don't block on every image/3rd-party pixel, cutting many seconds before
+// typing starts. Hidden tracking fields are still captured later (after the
+// stay-open window), so a faster initial load does not lose the cert/leadid.
+const LANDER_WAIT_UNTIL = process.env.LANDER_WAIT_UNTIL || "domcontentloaded";
+const LANDER_NAV_TIMEOUT = Number(process.env.LANDER_NAV_TIMEOUT_MS || 90000);
+const WARMUP_MIN_MS = Number(process.env.LANDER_WARMUP_MIN_MS || 2000);
+const WARMUP_MAX_MS = Number(process.env.LANDER_WARMUP_MAX_MS || 4000);
+
 class SubmissionService {
   async submitForm(centerId, campaignName, formData, user) {
     let submissionLog = null;
@@ -95,15 +115,19 @@ class SubmissionService {
         device,
       }));
 
+      // Resolve this campaign's tracking-field selectors (campaign override →
+      // industry-standard default).
+      const captureSel = this.resolveCaptureSelectors(formSetup);
+
       await browserService.emulateDevice(page, device);
       await this.navigateToLander(page, formSetup.landerUrl);
 
-      // --- REQUIREMENT 1: WARM-UP DELAY (4-8s) ---
-      const warmUp = randInt(4000, 8000);
+      // --- WARM-UP DELAY (tunable; default 2-4s) ---
+      const warmUp = randInt(WARMUP_MIN_MS, WARMUP_MAX_MS);
       await sleep(warmUp);
 
       await this.injectIpAddresses(page, proxyConfig.ip);
-      await this.setupTrustedFormListener(page);
+      await this.setupTrustedFormListener(page, captureSel);
 
       // Typing speed randomization
       const typingSpeed = this.getRandomTypingSpeed(center?.settings?.typingSpeed);
@@ -127,8 +151,8 @@ class SubmissionService {
       }
 
       // Pre-submit captures
-      const leadId = await this.getLeadId(page);
-      const ipAddress = await this.getUserIp(page);
+      const leadId = await this.getLeadId(page, captureSel.leadId);
+      const ipAddress = await this.getUserIp(page, captureSel.userIp);
       const placeId = await this.getPlaceId(page, formData);
 
       // Prepare Submit
@@ -148,7 +172,7 @@ class SubmissionService {
 
       // 3) Capture after stayOpen window
       const finalPageUrl = page.url();
-      const trustedFormData = await this.getTrustedFormData(page);
+      const trustedFormData = await this.getTrustedFormData(page, captureSel);
 
       const submissionResult = {
         ...formData,
@@ -349,11 +373,28 @@ class SubmissionService {
 
   async navigateToLander(page, url) {
     try {
-      await page.goto(url, { waitUntil: "load", timeout: 90000 });
-      logger.debug("Navigated to lander", { url });
+      await page.goto(url, { waitUntil: LANDER_WAIT_UNTIL, timeout: LANDER_NAV_TIMEOUT });
+      logger.debug("Navigated to lander", { url, waitUntil: LANDER_WAIT_UNTIL });
     } catch (error) {
       throw new BrowserError(`Failed to navigate to lander: ${error.message}`);
     }
+  }
+
+  // Merge the campaign's configured capture selectors with the standard
+  // defaults. Bare ids (no #/./[) are treated as element ids.
+  resolveCaptureSelectors(formSetup) {
+    const cs = formSetup?.captureSelectors || {};
+    const norm = (v, d) => {
+      const s = String(v ?? "").trim() || d;
+      return /^[#.\[]/.test(s) ? s : `#${s}`;
+    };
+    return {
+      leadId: norm(cs.leadId, DEFAULT_CAPTURE.leadId),
+      tfCert: norm(cs.tfCert, DEFAULT_CAPTURE.tfCert),
+      tfToken: norm(cs.tfToken, DEFAULT_CAPTURE.tfToken),
+      tfPing: norm(cs.tfPing, DEFAULT_CAPTURE.tfPing),
+      userIp: norm(cs.userIp, DEFAULT_CAPTURE.userIp),
+    };
   }
 
   async injectIpAddresses(page, proxyIp) {
@@ -363,14 +404,19 @@ class SubmissionService {
     }, proxyIp);
   }
 
-  async setupTrustedFormListener(page) {
-    await page.evaluate(() => {
+  async setupTrustedFormListener(page, sel = {}) {
+    const selectors = {
+      cert: sel.tfCert || DEFAULT_CAPTURE.tfCert,
+      token: sel.tfToken || DEFAULT_CAPTURE.tfToken,
+      ping: sel.tfPing || DEFAULT_CAPTURE.tfPing,
+    };
+    await page.evaluate((s) => {
       window._trustedFormData = null;
 
       const captureTF = () => {
-        const cert = document.querySelector("#xxTrustedFormCertUrl_0")?.value || "";
-        const token = document.querySelector("#xxTrustedFormToken_0")?.value || "";
-        const ping = document.querySelector("#xxTrustedFormPingUrl_0")?.value || "";
+        const cert = document.querySelector(s.cert)?.value || "";
+        const token = document.querySelector(s.token)?.value || "";
+        const ping = document.querySelector(s.ping)?.value || "";
         if (cert && token && ping) {
           window._trustedFormData = { cert, token, ping };
           return true;
@@ -386,7 +432,7 @@ class SubmissionService {
 
       observer.observe(document.body, { childList: true, subtree: true });
       setTimeout(() => observer.disconnect(), 6000);
-    });
+    }, selectors);
   }
 
   async fillFormFields(page, fields, formData, typingHelper, deviceType) {
@@ -474,9 +520,9 @@ class SubmissionService {
     }
   }
 
-  async getLeadId(page) {
+  async getLeadId(page, selector = DEFAULT_CAPTURE.leadId) {
     try {
-      const v = await browserService.getFieldValue(page, "#leadid_token");
+      const v = await browserService.getFieldValue(page, selector || DEFAULT_CAPTURE.leadId);
       return (v || "").trim();
     } catch {
       return "";
@@ -500,26 +546,26 @@ class SubmissionService {
     return "";
   }
 
-  async getUserIp(page) {
+  async getUserIp(page, selector = DEFAULT_CAPTURE.userIp) {
     try {
-      const v = await browserService.getFieldValue(page, "#user_ip");
+      const v = await browserService.getFieldValue(page, selector || DEFAULT_CAPTURE.userIp);
       return (v || "").trim();
     } catch {
       return "";
     }
   }
 
-  async getTrustedFormData(page) {
+  async getTrustedFormData(page, sel = {}) {
     const tfData = await page.evaluate(() => window._trustedFormData).catch(() => null);
     if (tfData) return tfData;
 
+    const certSel = sel.tfCert || DEFAULT_CAPTURE.tfCert;
+    const tokenSel = sel.tfToken || DEFAULT_CAPTURE.tfToken;
+    const pingSel = sel.tfPing || DEFAULT_CAPTURE.tfPing;
     return {
-      cert:
-        (await browserService.getFieldValue(page, "#xxTrustedFormCertUrl_0").catch(() => "")) || "",
-      token:
-        (await browserService.getFieldValue(page, "#xxTrustedFormToken_0").catch(() => "")) || "",
-      ping:
-        (await browserService.getFieldValue(page, "#xxTrustedFormPingUrl_0").catch(() => "")) || "",
+      cert: (await browserService.getFieldValue(page, certSel).catch(() => "")) || "",
+      token: (await browserService.getFieldValue(page, tokenSel).catch(() => "")) || "",
+      ping: (await browserService.getFieldValue(page, pingSel).catch(() => "")) || "",
     };
   }
   async clickSubmitButton(page, submitSelector, deviceType) {

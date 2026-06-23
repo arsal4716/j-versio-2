@@ -28,6 +28,8 @@ const submissionLogSchema = new mongoose.Schema(
       leadId: String,
       placeId: String,
       trustedForm: String,
+      trustedFormToken: String,
+      trustedFormPing: String,
       ipAddress: String,
       proxyIp: String,
       pageUrl: String,

@@ -179,6 +179,8 @@ class SubmissionService {
         leadId,
         placeId,
         trustedForm: trustedFormData?.cert || "",
+        trustedFormToken: trustedFormData?.token || "",
+        trustedFormPing: trustedFormData?.ping || "",
         ipAddress,
         proxyIp: proxyConfig.ip,
         pageUrl: finalPageUrl,
@@ -417,7 +419,11 @@ class SubmissionService {
         const cert = document.querySelector(s.cert)?.value || "";
         const token = document.querySelector(s.token)?.value || "";
         const ping = document.querySelector(s.ping)?.value || "";
-        if (cert && token && ping) {
+        // The cert URL is the value that matters and the one most landers expose;
+        // token/ping are optional and frequently absent or populated later. Lock
+        // in the data as soon as the cert is present, keeping whatever token/ping
+        // exist at that moment.
+        if (cert) {
           window._trustedFormData = { cert, token, ping };
           return true;
         }
@@ -600,6 +606,8 @@ class SubmissionService {
       ...(leadIdForDb ? { leadId: leadIdForDb } : {}),
       ...(submissionResult.placeId ? { placeId: submissionResult.placeId } : {}),
       trustedForm: submissionResult.trustedForm,
+      trustedFormToken: submissionResult.trustedFormToken,
+      trustedFormPing: submissionResult.trustedFormPing,
       ipAddress: submissionResult.ipAddress,
       proxyIp: submissionResult.proxyIp,
       pageUrl: submissionResult.pageUrl,

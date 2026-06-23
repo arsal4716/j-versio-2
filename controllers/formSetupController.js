@@ -84,6 +84,7 @@ export const createFormSetup = async (req, res, next) => {
       fields: normalizedFields,
       submitButtonSelector: body.submitButtonSelector,
       consentSelector: body.consentSelector,
+      captureSelectors: safeParse(body.captureSelectors) || undefined,
       notes: body.notes,
       createdBy: req.user._id,
     });
@@ -152,6 +153,9 @@ export const updateFormSetup = async (req, res, next) => {
         submitButtonSelector: body.submitButtonSelector,
       }),
       ...(body.consentSelector && { consentSelector: body.consentSelector }),
+      ...(body.captureSelectors !== undefined && {
+        captureSelectors: safeParse(body.captureSelectors),
+      }),
       ...(body.notes && { notes: body.notes }),
     };
     if (normalizedFields) update.fields = normalizedFields;

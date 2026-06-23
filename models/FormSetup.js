@@ -30,6 +30,18 @@ const FormSetupSchema = new mongoose.Schema(
     fields: { type: [FieldSchema], default: [] },
     submitButtonSelector: { type: String },
     consentSelector: { type: String },
+
+    // Per-campaign overrides for the hidden tracking fields we read off the
+    // lander. Some landers use non-standard ids, so each is configurable; when
+    // left blank the industry-standard default (below) is used at run time.
+    captureSelectors: {
+      leadId: { type: String, default: "" },   // Jornaya LeadiD token (default #leadid_token)
+      tfCert: { type: String, default: "" },    // TrustedForm cert url  (default #xxTrustedFormCertUrl_0)
+      tfToken: { type: String, default: "" },   // TrustedForm token     (default #xxTrustedFormToken_0)
+      tfPing: { type: String, default: "" },    // TrustedForm ping url   (default #xxTrustedFormPingUrl_0)
+      userIp: { type: String, default: "" },    // captured IP field      (default #user_ip)
+    },
+
     notes: { type: String },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },

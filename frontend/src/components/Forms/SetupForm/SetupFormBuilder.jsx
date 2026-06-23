@@ -100,20 +100,28 @@ const SetupFormBuilder = ({
 }) => {
   const dispatch = useDispatch();
   const { loading, error } = useSelector((s) => s.formSetup || {});
+  const EMPTY_CAPTURE = { leadId: "", tfCert: "", tfToken: "", tfPing: "", userIp: "" };
   const [form, setForm] = useState({
     centerId: initialCenterId || "",
     campaignName: initialCampaignName || "",
     landerUrl: "",
     submitButtonSelector: "",
     consentSelector: "",
+    captureSelectors: { ...EMPTY_CAPTURE },
     notes: "",
     fields: [],
   });
 
+  const updateCapture = (key, value) =>
+    setForm((f) => ({
+      ...f,
+      captureSelectors: { ...EMPTY_CAPTURE, ...(f.captureSelectors || {}), [key]: value },
+    }));
+
   // Initialize form with existing data or initial values
   useEffect(() => {
     if (existing) {
-      setForm(existing);
+      setForm({ ...existing, captureSelectors: { ...EMPTY_CAPTURE, ...(existing.captureSelectors || {}) } });
     } else if (initialCenterId || initialCampaignName) {
       setForm(prev => ({
         ...prev,
@@ -178,6 +186,7 @@ const SetupFormBuilder = ({
             landerUrl: "",
             submitButtonSelector: "",
             consentSelector: "",
+            captureSelectors: { ...EMPTY_CAPTURE },
             notes: "",
             fields: [],
           });
@@ -196,6 +205,7 @@ const SetupFormBuilder = ({
       landerUrl: "",
       submitButtonSelector: "",
       consentSelector: "",
+      captureSelectors: { ...EMPTY_CAPTURE },
       notes: "",
       fields: [],
     });
@@ -278,6 +288,73 @@ const SetupFormBuilder = ({
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   placeholder="Additional notes..."
+                />
+              </Form.Group>
+            </Col>
+          </Row>
+        </Card.Body>
+      </Card>
+
+      <Card className="mb-3">
+        <Card.Header>
+          <strong>Tracking Field Selectors</strong>{" "}
+          <span className="text-muted small">(optional — leave blank to use the defaults)</span>
+        </Card.Header>
+        <Card.Body>
+          <Alert variant="info" className="small mb-3">
+            These read the hidden Jornaya / TrustedForm / IP fields off the lander.
+            Most landers use the standard ids (shown as placeholders) — only set a
+            value here if <em>this</em> campaign's lander uses a different id, e.g.
+            a TrustedForm cert field named <code>#xxTrustedFormCertUrl_1</code>.
+          </Alert>
+          <Row className="g-3">
+            <Col md={4}>
+              <Form.Group>
+                <Form.Label className="small">Jornaya LeadiD</Form.Label>
+                <Form.Control
+                  value={form.captureSelectors?.leadId || ""}
+                  onChange={(e) => updateCapture("leadId", e.target.value)}
+                  placeholder="#leadid_token"
+                />
+              </Form.Group>
+            </Col>
+            <Col md={4}>
+              <Form.Group>
+                <Form.Label className="small">TrustedForm Cert URL</Form.Label>
+                <Form.Control
+                  value={form.captureSelectors?.tfCert || ""}
+                  onChange={(e) => updateCapture("tfCert", e.target.value)}
+                  placeholder="#xxTrustedFormCertUrl_0"
+                />
+              </Form.Group>
+            </Col>
+            <Col md={4}>
+              <Form.Group>
+                <Form.Label className="small">TrustedForm Token</Form.Label>
+                <Form.Control
+                  value={form.captureSelectors?.tfToken || ""}
+                  onChange={(e) => updateCapture("tfToken", e.target.value)}
+                  placeholder="#xxTrustedFormToken_0"
+                />
+              </Form.Group>
+            </Col>
+            <Col md={4}>
+              <Form.Group>
+                <Form.Label className="small">TrustedForm Ping URL</Form.Label>
+                <Form.Control
+                  value={form.captureSelectors?.tfPing || ""}
+                  onChange={(e) => updateCapture("tfPing", e.target.value)}
+                  placeholder="#xxTrustedFormPingUrl_0"
+                />
+              </Form.Group>
+            </Col>
+            <Col md={4}>
+              <Form.Group>
+                <Form.Label className="small">IP Address Field</Form.Label>
+                <Form.Control
+                  value={form.captureSelectors?.userIp || ""}
+                  onChange={(e) => updateCapture("userIp", e.target.value)}
+                  placeholder="#user_ip"
                 />
               </Form.Group>
             </Col>

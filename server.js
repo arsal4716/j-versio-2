@@ -28,6 +28,7 @@ import settingsRoutes from "./routes/settingsRoutes.js";
 import dncRoutes from "./routes/dncRoutes.js";
 import auditRoutes from "./routes/auditRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
+import googleKeyRoutes from "./routes/googleKeyRoutes.js";
 
 const app = express();
 
@@ -100,6 +101,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/dnc", dncRoutes);
 app.use("/api/logs", auditRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/google-keys", googleKeyRoutes);
 
 /* ---------------- frontend (SPA) ---------------- */
 

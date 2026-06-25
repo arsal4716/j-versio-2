@@ -7,6 +7,7 @@ import { success, fail } from "../utils/response.js";
 import { STATUS_CODES } from "../config/constants.js";
 import { audit } from "../services/auditService.js";
 import { saveServiceAccountKey } from "../utils/storage.js";
+import { encryptSecret } from "../utils/secretCrypto.js";
 
 // Escapes a string for safe use inside a RegExp (used for case-insensitive
 // exact-match uniqueness checks).
@@ -66,10 +67,17 @@ export const createCenter = async (req, res, next) => {
     }
 
     let clientKeyFilePath = null;
+    let clientKeyEnc = "";
 
     if (req.file) {
-      // Validates JSON and stores at storage/centers/{name}/google-key.json.
+      // Validates JSON and stores it at sheets/{name}/google-key.json (local
+      // cache) AND encrypted in MongoDB so every server can use it.
       clientKeyFilePath = saveServiceAccountKey(name, req.file.path);
+      try {
+        clientKeyEnc = encryptSecret(fs.readFileSync(clientKeyFilePath, "utf8"));
+      } catch {
+        /* file already validated by saveServiceAccountKey; ignore */
+      }
     }
 
     const center = new Center({
@@ -84,6 +92,7 @@ export const createCenter = async (req, res, next) => {
       },
       googleSheets: {
         clientKeyFile: clientKeyFilePath,
+        ...(clientKeyEnc ? { clientKeyEnc } : {}),
         masterSheetId: googleSheets?.masterSheetId,
         adminSheetId: googleSheets?.adminSheetId,
       },
@@ -286,10 +295,17 @@ export const updateCenter = async (req, res, next) => {
     // previously dropped, so re-uploading a key silently did nothing).
     if (req.file) {
       const savedPath = saveServiceAccountKey(req.body.name || center.name, req.file.path);
+      let enc = "";
+      try {
+        enc = encryptSecret(fs.readFileSync(savedPath, "utf8"));
+      } catch {
+        /* ignore */
+      }
       req.body.googleSheets = {
         ...(center.googleSheets?.toObject?.() || center.googleSheets || {}),
         ...(req.body.googleSheets || {}),
         clientKeyFile: savedPath,
+        ...(enc ? { clientKeyEnc: enc } : {}),
       };
     } else if (req.body.googleSheets) {
       // No new key in this edit: merge onto the stored googleSheets and PRESERVE

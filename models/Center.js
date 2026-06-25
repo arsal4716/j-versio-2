@@ -22,6 +22,11 @@ const centerSchema = new mongoose.Schema({
   },
   googleSheets: {
     clientKeyFile: { type: String },
+    // Encrypted service-account JSON, stored in MongoDB so the key is available
+    // to EVERY server/worker (upload once, used fleet-wide). Filesystem
+    // (clientKeyFile / sheets/<center>/) remains a fallback. select:false so it
+    // never leaks in normal reads.
+    clientKeyEnc: { type: String, default: "", select: false },
     masterSheetId: { type: String, required: true },
   },
   campaigns: [

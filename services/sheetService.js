@@ -3,6 +3,11 @@ import path from "path";
 import fs from "fs";
 import { google } from "googleapis";
 import logger from "../utils/logger.js";
+import Center from "../models/Center.js";
+import AppConfig from "../models/AppConfig.js";
+import { encryptSecret, decryptSecret } from "../utils/secretCrypto.js";
+
+const ADMIN_KEY_CONFIG_NAME = "adminGoogleKey";
 
 const absPath = (p) =>
   path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
@@ -27,9 +32,7 @@ function loadServiceAccountKeyJson(keyFilePath) {
   return JSON.parse(raw);
 }
 
-async function appendRow({ keyFile, spreadsheetId, tabName, row }) {
-  const keyJson = loadServiceAccountKeyJson(keyFile);
-
+async function appendRow({ keyJson, spreadsheetId, tabName, row }) {
   const auth = new google.auth.GoogleAuth({
     credentials: keyJson,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
@@ -159,10 +162,91 @@ function resolveCenterKeyFile(center) {
   return null;
 }
 
+// Resolve a center's service-account key JSON. MongoDB (encrypted) is the
+// fleet-wide source of truth; the filesystem is a fallback. When only a file
+// exists it is auto-migrated into MongoDB so every other server can use it
+// without a re-upload.
+async function resolveCenterKeyJson(center) {
+  // The center object passed in is usually a lean read WITHOUT the select:false
+  // clientKeyEnc, so fetch the encrypted blob explicitly.
+  let enc = center?.googleSheets?.clientKeyEnc;
+  if (!enc && center?._id) {
+    const fresh = await Center.findById(center._id)
+      .select("+googleSheets.clientKeyEnc")
+      .lean()
+      .catch(() => null);
+    enc = fresh?.googleSheets?.clientKeyEnc;
+  }
+  if (enc) {
+    try {
+      return JSON.parse(decryptSecret(enc));
+    } catch (e) {
+      logger.warn("Failed to decrypt stored center key; falling back to file", {
+        centerId: center?._id,
+        error: e?.message,
+      });
+    }
+  }
+
+  // Filesystem fallback (+ auto-migrate into Mongo for the rest of the fleet).
+  const file = resolveCenterKeyFile(center);
+  if (file) {
+    try {
+      const json = loadServiceAccountKeyJson(file);
+      if (center?._id) {
+        Center.updateOne(
+          { _id: center._id },
+          { $set: { "googleSheets.clientKeyEnc": encryptSecret(JSON.stringify(json)) } }
+        ).catch((e) => logger.warn("Center key auto-migrate failed", { error: e?.message }));
+      }
+      return json;
+    } catch (e) {
+      logger.warn("Failed to read center key file", { file, error: e?.message });
+    }
+  }
+  return null;
+}
+
+// Resolve the global admin service-account key JSON. MongoDB first, then the
+// legacy sheets/admin/admin.json file (auto-migrated into Mongo on first use).
+async function resolveAdminKeyJson() {
+  const doc = await AppConfig.findOne({ name: ADMIN_KEY_CONFIG_NAME }).lean().catch(() => null);
+  if (doc?.valueEnc) {
+    try {
+      return JSON.parse(decryptSecret(doc.valueEnc));
+    } catch (e) {
+      logger.warn("Failed to decrypt stored admin key; falling back to file", { error: e?.message });
+    }
+  }
+
+  const file = process.env.GOOGLE_ADMIN_KEY_FILE || "sheets/admin/admin.json";
+  if (fileExists(file)) {
+    try {
+      const json = loadServiceAccountKeyJson(file);
+      AppConfig.updateOne(
+        { name: ADMIN_KEY_CONFIG_NAME },
+        {
+          $set: {
+            valueEnc: encryptSecret(JSON.stringify(json)),
+            meta: { client_email: json.client_email || "", source: "file-migrated" },
+          },
+        },
+        { upsert: true }
+      ).catch((e) => logger.warn("Admin key auto-migrate failed", { error: e?.message }));
+      return json;
+    } catch (e) {
+      logger.warn("Failed to read admin key file", { file, error: e?.message });
+    }
+  }
+  return null;
+}
+
 class SheetService {
   async saveSubmissionToSheets(center, campaign, submissionResult, formSetup) {
-    const adminKeyFile = "sheets/admin/admin.json";
-    const centerKeyFile = resolveCenterKeyFile(center);
+    const [adminKeyJson, centerKeyJson] = await Promise.all([
+      resolveAdminKeyJson(),
+      resolveCenterKeyJson(center),
+    ]);
 
     const adminSpreadsheetId = center?.googleSheets?.masterSheetId;
     const adminTabName = normalizeTabName(center?.name);
@@ -180,41 +264,31 @@ class SheetService {
       admin: { success: false },
     };
 
-    if (!fileExists(adminKeyFile)) {
-      result.admin = {
-        success: false,
-        error: `Admin key file not found: ${adminKeyFile}`,
-      };
-    }
-
-    if (!centerKeyFile) {
-      result.master = {
-        success: false,
-        error:
-          "Center key file not found. Set googleSheets.clientKeyFile OR place file at sheets/<verificationCode>/client-key.json OR sheets/<centerName>/client-key.json",
-      };
-    }
-    if (!adminSpreadsheetId) {
+    // ---- Admin / master sheet ----
+    if (!adminKeyJson) {
       result.admin = {
         success: false,
         error:
-          " spreadsheetId missing. Set center.googleSheets.masterSheetId (sheet spreadsheet ID).",
+          "Admin Google key not configured. Upload it once (stored in DB) via POST /api/google-keys/admin, or place sheets/admin/admin.json.",
       };
-    } else if (result.admin.error) {
-      // keep error
+    } else if (!adminSpreadsheetId) {
+      result.admin = {
+        success: false,
+        error: "Admin spreadsheetId missing. Set center.googleSheets.masterSheetId.",
+      };
     } else {
       try {
         await appendRow({
-          keyFile: adminKeyFile,
+          keyJson: adminKeyJson,
           spreadsheetId: adminSpreadsheetId,
           tabName: adminTabName,
           row,
         });
         result.admin = { success: true };
       } catch (e) {
-        const err = e?.message || " sheet append failed";
+        const err = e?.message || "Admin sheet append failed";
         result.admin = { success: false, error: err };
-        logger.error(" sheet append failed", {
+        logger.error("Admin sheet append failed", {
           centerId: center?._id,
           spreadsheetId: adminSpreadsheetId,
           tabName: adminTabName,
@@ -222,18 +296,23 @@ class SheetService {
         });
       }
     }
-    if (!centerSpreadsheetId) {
+
+    // ---- Center sheet ----
+    if (!centerKeyJson) {
       result.master = {
         success: false,
         error:
-          "Center campaign spreadsheetId missing. Set campaign.sheetTabId (center sheet spreadsheet ID).",
+          "Center Google key not found. Upload it on the center (stored in DB) or place a *.json in sheets/<centerName>/.",
       };
-    } else if (result.master.error) {
-      // keep error
+    } else if (!centerSpreadsheetId) {
+      result.master = {
+        success: false,
+        error: "Center campaign spreadsheetId missing. Set campaign.sheetTabId.",
+      };
     } else {
       try {
         await appendRow({
-          keyFile: centerKeyFile,
+          keyJson: centerKeyJson,
           spreadsheetId: centerSpreadsheetId,
           tabName: centerTabName,
           row,

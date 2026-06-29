@@ -50,6 +50,14 @@ const settingsConfigSchema = new mongoose.Schema(
       internalDatabase: { type: toggleKeySchema, default: () => ({}) },
     },
 
+    // ---------------- Access control (non-admin users) ----------------
+    access: {
+      // When false, agents in this center cannot open the CRM (records portal)
+      // and the CRM button is hidden from their top bar. Admins/super-admins are
+      // unaffected. Default true so existing behaviour is unchanged.
+      agentCrm: { type: Boolean, default: true },
+    },
+
     // ---------------- Customization ----------------
     customization: {
       typing: {

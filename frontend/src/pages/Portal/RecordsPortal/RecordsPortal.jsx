@@ -15,6 +15,7 @@ import { setOverrideCenterId } from "../../../store/slices/tenantSlice";
 import useDebouncedValue from "../../../hooks/useDebouncedValue";
 import { apiConfigService } from "../../../services/apiConfigService";
 import { recordService } from "../../../services/recordService";
+import { settingsService } from "../../../services/settingsService";
 import { getFormFieldsByCampaign } from "../../../services/formFieldsforCampaign";
 
 import CenterPicker from "../../../components/Records/CenterPicker";
@@ -50,6 +51,25 @@ export default function RecordsPortalPage() {
 
   const [apiConfigs, setApiConfigs] = useState([]);
   const [fieldLabels, setFieldLabels] = useState({});
+
+  // Agents only: whether the admin has enabled CRM access for this center.
+  const [crmAllowed, setCrmAllowed] = useState(true);
+  useEffect(() => {
+    if (!isUserOnly) {
+      setCrmAllowed(true);
+      return;
+    }
+    let cancelled = false;
+    settingsService
+      .getUiAccess()
+      .then((res) => {
+        if (!cancelled) setCrmAllowed(res?.data?.data?.agentCrm !== false);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isUserOnly]);
 
   const effectiveCenterId = useMemo(() => {
     if (isSuper && tenant.overrideCenterId) return tenant.overrideCenterId;
@@ -192,6 +212,17 @@ export default function RecordsPortalPage() {
       message.error(e.response?.data?.message || "Failed to delete record");
     }
   };
+
+  if (isUserOnly && !crmAllowed) {
+    return (
+      <div className="portal-wrap" style={{ textAlign: "center", padding: "4rem 1rem" }}>
+        <h4 className="mb-2">CRM access disabled</h4>
+        <p className="text-muted">
+          Your administrator has not enabled CRM access for your account.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="portal-wrap">

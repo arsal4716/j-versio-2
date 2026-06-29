@@ -293,6 +293,27 @@ const SettingsModal = ({ show, onHide, centerId, campaignName = null }) => {
                 <Col><Toggle label="Random Message" checked={s.customization.onformPopup.randomMessage} onChange={(v) => setPath(["customization", "onformPopup", "randomMessage"], v)} /></Col>
               </Row>
             </Section>
+
+            <Section title="Access">
+              <Row className="align-items-center">
+                <Col xs={12} md={8}>
+                  <div className="fw-medium">Allow agents to access the CRM</div>
+                  <div className="text-muted small">
+                    When off, agents in this center can't open the CRM (records) page
+                    and the CRM button is hidden from their top bar. Admins are unaffected.
+                  </div>
+                </Col>
+                <Col xs={12} md={4} className="mt-2 mt-md-0">
+                  <Toggle
+                    label={s.access?.agentCrm === false ? "Disabled" : "Enabled"}
+                    checked={s.access?.agentCrm !== false}
+                    onChange={(v) =>
+                      setS((prev) => ({ ...prev, access: { ...(prev.access || {}), agentCrm: v } }))
+                    }
+                  />
+                </Col>
+              </Row>
+            </Section>
           </>
         )}
       </Modal.Body>

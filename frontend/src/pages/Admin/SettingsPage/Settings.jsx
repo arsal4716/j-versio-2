@@ -4,6 +4,7 @@ import { Settings as SettingsIcon, Sliders } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { getCenters } from "../../../store/slices/centerSlice";
 import SettingsModal from "../../../components/Settings/SettingsModal";
+import MaintenanceControl from "../../../components/Settings/MaintenanceControl";
 
 // Super-admin settings hub: adjust a center's DEFAULT settings, or override the
 // settings for any single campaign in that center. Reuses the SettingsModal.
@@ -35,6 +36,8 @@ const SettingsPage = () => {
         Choose a center to manage its default automation settings, or override
         the settings for an individual campaign.
       </p>
+
+      <MaintenanceControl />
 
       <Card className="mb-4">
         <Card.Body>

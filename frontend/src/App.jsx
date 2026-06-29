@@ -10,6 +10,7 @@ import { ToastContainer } from "react-toastify";
 import { AnimatePresence, motion } from "framer-motion";
 import store from "./store/store";
 import Layout from "./components/layout/Layout";
+import MaintenanceGate from "./components/Maintenance/MaintenanceGate";
 import Home from "./pages/Home/Home";
 import Login from "./pages/Login/Login";
 import Signup from "./pages/Signup/Signup";
@@ -207,9 +208,11 @@ function App() {
   return (
     <Provider store={store}>
       <Router>
-        <Layout>
-          <AnimatedRoutes />
-        </Layout>
+        <MaintenanceGate>
+          <Layout>
+            <AnimatedRoutes />
+          </Layout>
+        </MaintenanceGate>
 
         <ToastContainer
           position="top-right"

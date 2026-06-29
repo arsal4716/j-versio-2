@@ -52,10 +52,12 @@ const settingsConfigSchema = new mongoose.Schema(
 
     // ---------------- Access control (non-admin users) ----------------
     access: {
-      // When false, agents in this center cannot open the CRM (records portal)
-      // and the CRM button is hidden from their top bar. Admins/super-admins are
-      // unaffected. Default true so existing behaviour is unchanged.
-      agentCrm: { type: Boolean, default: true },
+      // Whether agents may see the CRM (records portal) for THIS scope.
+      // Evaluated per campaign: a campaign override wins over the center default.
+      // Default false → agents see nothing until an admin enables it, either at
+      // the center default (all campaigns) or per campaign (just that one).
+      // Admins/super-admins are always unaffected.
+      agentCrm: { type: Boolean, default: false },
     },
 
     // ---------------- Customization ----------------

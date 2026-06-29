@@ -37,18 +37,19 @@ async function list(req, res) {
   const { campaignName } = req.query;
 
   if (isUserOnly) {
-    // CRM access can be disabled for agents per center (Settings → Access).
-    const eff = await settingsService.getEffectiveSettings(centerId, null).catch(() => null);
-    if (eff?.access?.agentCrm === false) {
-      return res.status(403).json({
-        success: false,
-        message: "CRM access is disabled for your account. Contact your admin.",
-      });
-    }
-
     const allowed = Array.isArray(req.user.allowedCampaigns) ? req.user.allowedCampaigns : [];
     if (!allowed.includes(campaignName)) {
       return res.status(403).json({ success: false, message: "Campaign access denied" });
+    }
+
+    // CRM access is evaluated per campaign (campaign override beats center
+    // default). The agent may only read a campaign whose CRM is enabled.
+    const eff = await settingsService.getEffectiveSettings(centerId, campaignName).catch(() => null);
+    if (eff?.access?.agentCrm !== true) {
+      return res.status(403).json({
+        success: false,
+        message: "CRM access is disabled for this campaign. Contact your admin.",
+      });
     }
   }
 

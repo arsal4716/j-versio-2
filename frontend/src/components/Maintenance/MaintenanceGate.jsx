@@ -15,12 +15,16 @@ const MaintenanceGate = ({ children }) => {
   const isSuperAdmin = Array.isArray(user?.roles) && user.roles.includes("super_admin");
 
   const [status, setStatus] = useState({ active: false, until: null, message: "" });
+  // Gate the first paint on the initial check so a maintenance-active visitor
+  // never sees the app flash before the maintenance page.
+  const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(() => {
     maintenanceService
       .get()
       .then((res) => setStatus(res?.data?.data || { active: false }))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -30,6 +34,10 @@ const MaintenanceGate = ({ children }) => {
   }, [refresh]);
 
   const onLoginPage = location.pathname === "/login";
+
+  // Until the first status arrives, render nothing (avoids the app→maintenance
+  // flicker). The check is a tiny public request, so this is a brief blank.
+  if (!loaded) return null;
 
   if (status.active && !isSuperAdmin && !onLoginPage) {
     return <MaintenancePage until={status.until} message={status.message} onElapsed={refresh} />;

@@ -34,8 +34,15 @@ export async function getMaintenance(req, res) {
 export async function setMaintenance(req, res) {
   try {
     const { enabled, until, message } = req.body || {};
-    if (enabled && until && Number.isNaN(new Date(until).getTime())) {
-      return fail(res, { message: "Invalid 'until' date", status: 400 });
+    if (enabled && until) {
+      const t = new Date(until).getTime();
+      if (Number.isNaN(t)) {
+        return fail(res, { message: "Invalid 'until' date", status: 400 });
+      }
+      // A countdown can only run toward a future time.
+      if (t <= Date.now()) {
+        return fail(res, { message: "Maintenance end time must be in the future", status: 400 });
+      }
     }
     const meta = {
       enabled: !!enabled,

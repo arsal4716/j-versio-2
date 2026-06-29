@@ -20,6 +20,13 @@ const MaintenanceControl = () => {
   const [active, setActive] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Lower bound for the picker = now (no past times).
+  const minLocal = (() => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+
   const load = () => {
     maintenanceService
       .get()
@@ -37,6 +44,11 @@ const MaintenanceControl = () => {
   }, []);
 
   const save = async (nextEnabled) => {
+    // Guard client-side too: a countdown can only run toward a future time.
+    if (nextEnabled && until && new Date(until).getTime() <= Date.now()) {
+      showToast("error", "Maintenance end time must be in the future.");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -71,6 +83,7 @@ const MaintenanceControl = () => {
             <Form.Label className="small">Back online at (optional — drives the countdown)</Form.Label>
             <Form.Control
               type="datetime-local"
+              min={minLocal}
               value={until}
               onChange={(e) => setUntil(e.target.value)}
             />

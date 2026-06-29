@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Input, DatePicker, Button, Dropdown, message } from "antd";
+import { Input, DatePicker, Button, Dropdown, message, Spin } from "antd";
 import {
   ReloadOutlined,
   SearchOutlined,
@@ -52,20 +52,31 @@ export default function RecordsPortalPage() {
   const [apiConfigs, setApiConfigs] = useState([]);
   const [fieldLabels, setFieldLabels] = useState({});
 
-  // Agents only: whether the admin has enabled CRM access for this center.
-  const [crmAllowed, setCrmAllowed] = useState(true);
+  // Agents only: which campaigns the admin has enabled CRM access for.
+  // crmCampaigns === null means "all" (privileged); an array limits the agent to
+  // those campaigns. `loading` gates the first render so nothing flashes.
+  const [access, setAccess] = useState({ loading: true, agentCrm: true, crmCampaigns: null });
   useEffect(() => {
     if (!isUserOnly) {
-      setCrmAllowed(true);
+      setAccess({ loading: false, agentCrm: true, crmCampaigns: null });
       return;
     }
     let cancelled = false;
+    setAccess((a) => ({ ...a, loading: true }));
     settingsService
       .getUiAccess()
       .then((res) => {
-        if (!cancelled) setCrmAllowed(res?.data?.data?.agentCrm !== false);
+        if (cancelled) return;
+        const d = res?.data?.data || {};
+        setAccess({
+          loading: false,
+          agentCrm: d.agentCrm !== false,
+          crmCampaigns: Array.isArray(d.crmCampaigns) ? d.crmCampaigns : null,
+        });
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setAccess({ loading: false, agentCrm: false, crmCampaigns: [] });
+      });
     return () => {
       cancelled = true;
     };
@@ -87,13 +98,17 @@ export default function RecordsPortalPage() {
 
   const campaigns = useMemo(() => {
     let list = (selectedCenter?.campaigns || []).filter((c) => c?.isActive !== false);
-    // A plain user only sees the campaigns assigned to them — never the others.
+    // A plain user only sees the campaigns assigned to them — never the others —
+    // and, of those, only the ones with CRM access enabled (per campaign).
     if (isUserOnly) {
       const allowed = user?.allowedCampaigns || [];
       list = list.filter((c) => allowed.includes(c.name));
+      if (Array.isArray(access.crmCampaigns)) {
+        list = list.filter((c) => access.crmCampaigns.includes(c.name));
+      }
     }
     return list;
-  }, [selectedCenter, isUserOnly, user?.allowedCampaigns]);
+  }, [selectedCenter, isUserOnly, user?.allowedCampaigns, access.crmCampaigns]);
 
   useEffect(() => {
     const first = campaigns?.[0]?.name;
@@ -213,12 +228,20 @@ export default function RecordsPortalPage() {
     }
   };
 
-  if (isUserOnly && !crmAllowed) {
+  if (isUserOnly && access.loading) {
+    return (
+      <div className="portal-wrap" style={{ textAlign: "center", padding: "4rem 1rem" }}>
+        <Spin />
+      </div>
+    );
+  }
+
+  if (isUserOnly && !access.agentCrm) {
     return (
       <div className="portal-wrap" style={{ textAlign: "center", padding: "4rem 1rem" }}>
         <h4 className="mb-2">CRM access disabled</h4>
         <p className="text-muted">
-          Your administrator has not enabled CRM access for your account.
+          Your administrator has not enabled CRM access for any of your campaigns.
         </p>
       </div>
     );

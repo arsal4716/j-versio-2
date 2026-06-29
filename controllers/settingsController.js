@@ -19,23 +19,38 @@ class SettingsController {
     }
   };
 
-  // GET /api/settings/ui-access -> { agentCrm } for the caller's center.
-  // Used by the top bar / CRM page to decide what an agent may see. Fail-open
-  // (defaults to allowed) so a transient error never locks people out of the UI;
-  // the records API still enforces the real gate.
+  // GET /api/settings/ui-access -> { agentCrm, crmCampaigns } for the caller.
+  // CRM access is evaluated PER CAMPAIGN (campaign override beats center
+  // default). For an agent, crmCampaigns is the subset of their allowed
+  // campaigns where CRM is enabled; agentCrm is true when that subset is
+  // non-empty. Privileged users get { agentCrm: true, crmCampaigns: null }
+  // (null = all). The records API enforces the same per-campaign gate.
   getUiAccess = async (req, res) => {
     try {
       const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
       const privileged = roles.includes("super_admin") || roles.includes("admin");
       const centerId = req.user?.centerId?.toString?.() || req.user?.centerId;
       if (privileged || !centerId) {
-        return success(res, { message: "ok", data: { agentCrm: true } });
+        return success(res, { message: "ok", data: { agentCrm: true, crmCampaigns: null } });
       }
-      const eff = await settingsService.getEffectiveSettings(centerId, null);
-      const agentCrm = eff?.access?.agentCrm !== false;
-      return success(res, { message: "ok", data: { agentCrm } });
+
+      const allowed = Array.isArray(req.user.allowedCampaigns) ? req.user.allowedCampaigns : [];
+      const enabled = [];
+      for (const name of allowed) {
+        try {
+          const eff = await settingsService.getEffectiveSettings(centerId, name);
+          if (eff?.access?.agentCrm === true) enabled.push(name);
+        } catch {
+          /* skip this campaign */
+        }
+      }
+      return success(res, {
+        message: "ok",
+        data: { agentCrm: enabled.length > 0, crmCampaigns: enabled },
+      });
     } catch (e) {
-      return success(res, { message: "ok", data: { agentCrm: true } });
+      // Default is "disabled", so fail closed (but never 500).
+      return success(res, { message: "ok", data: { agentCrm: false, crmCampaigns: [] } });
     }
   };
 

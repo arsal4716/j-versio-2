@@ -21,9 +21,11 @@ const WhiteHeader = () => {
   const isPrivileged = roles.includes("admin") || roles.includes("super_admin");
   const isAgent = !!user && !isPrivileged;
 
-  // Agents only see the CRM link when their admin has enabled CRM access for the
-  // center. Privileged users always see it. Default true so nothing flickers off.
-  const [agentCrm, setAgentCrm] = useState(true);
+  // Agents only see the CRM link when their admin has enabled CRM access for at
+  // least one of their campaigns. Start HIDDEN for agents so the button never
+  // flashes on then off; it appears only once access is confirmed. Privileged
+  // users always see it.
+  const [agentCrm, setAgentCrm] = useState(false);
   useEffect(() => {
     if (!isAgent) return;
     let cancelled = false;

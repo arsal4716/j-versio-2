@@ -19,6 +19,26 @@ class SettingsController {
     }
   };
 
+  // GET /api/settings/ui-access -> { agentCrm } for the caller's center.
+  // Used by the top bar / CRM page to decide what an agent may see. Fail-open
+  // (defaults to allowed) so a transient error never locks people out of the UI;
+  // the records API still enforces the real gate.
+  getUiAccess = async (req, res) => {
+    try {
+      const roles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+      const privileged = roles.includes("super_admin") || roles.includes("admin");
+      const centerId = req.user?.centerId?.toString?.() || req.user?.centerId;
+      if (privileged || !centerId) {
+        return success(res, { message: "ok", data: { agentCrm: true } });
+      }
+      const eff = await settingsService.getEffectiveSettings(centerId, null);
+      const agentCrm = eff?.access?.agentCrm !== false;
+      return success(res, { message: "ok", data: { agentCrm } });
+    } catch (e) {
+      return success(res, { message: "ok", data: { agentCrm: true } });
+    }
+  };
+
   // PUT /api/settings/:centerId  body: { campaignName?, ...settings }
   update = async (req, res) => {
     try {

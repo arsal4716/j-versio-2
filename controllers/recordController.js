@@ -2,6 +2,7 @@
 import { listPortalRecords } from "../services/recordService.js";
 import SubmissionLog from "../models/SubmissionLog.js";
 import { isValidObjectId } from "../utils/objectId.js";
+import settingsService from "../services/settingsService.js";
 
 const isSuper = (user) => Array.isArray(user?.roles) && user.roles.includes("super_admin");
 
@@ -36,6 +37,15 @@ async function list(req, res) {
   const { campaignName } = req.query;
 
   if (isUserOnly) {
+    // CRM access can be disabled for agents per center (Settings → Access).
+    const eff = await settingsService.getEffectiveSettings(centerId, null).catch(() => null);
+    if (eff?.access?.agentCrm === false) {
+      return res.status(403).json({
+        success: false,
+        message: "CRM access is disabled for your account. Contact your admin.",
+      });
+    }
+
     const allowed = Array.isArray(req.user.allowedCampaigns) ? req.user.allowedCampaigns : [];
     if (!allowed.includes(campaignName)) {
       return res.status(403).json({ success: false, message: "Campaign access denied" });

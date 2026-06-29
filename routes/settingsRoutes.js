@@ -7,6 +7,8 @@ const router = express.Router();
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
+// Must precede "/:centerId" so it isn't captured as a centerId param.
+router.get("/ui-access", auth, asyncHandler(settingsController.getUiAccess));
 router.get("/:centerId", auth, asyncHandler(settingsController.get));
 router.put(
   "/:centerId",
